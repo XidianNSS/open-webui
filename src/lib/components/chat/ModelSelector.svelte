@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { models, showSettings, settings, user, mobile, config } from '$lib/stores';
-	import { onMount, tick, getContext } from 'svelte';
+	import { onMount, tick, getContext, createEventDispatcher } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import Selector from './ModelSelector/Selector.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
 
 	import { updateUserSettings } from '$lib/apis/users';
 	const i18n = getContext('i18n');
+	const dispatch = createEventDispatcher();
 
 	export let selectedModels = [''];
 	export let disabled = false;
@@ -37,6 +38,22 @@
 		settings.set({ ...$settings, pinnedModels: pinnedModels });
 		await updateUserSettings(localStorage.token, { ui: $settings });
 	};
+	const handleSelectorModelSelected = (selectedModelIdx: number, event: CustomEvent) => {
+		const { value, item, model } = event.detail;
+
+		selectedModels[selectedModelIdx] = value;
+		selectedModels = [...selectedModels];
+
+		console.log('outer modelSelected', { selectedModelIdx, value });
+		dispatch('modelSelected', {
+			index: selectedModelIdx,
+			value,
+			item,
+			model,
+			selectedModels: [...selectedModels]
+		});
+	};
+
 
 	$: if (selectedModels.length > 0 && $models.length > 0) {
 		const _selectedModels = selectedModels.map((model) =>
@@ -47,6 +64,8 @@
 			selectedModels = _selectedModels;
 		}
 	}
+
+
 </script>
 
 <div class="flex flex-col w-full items-start">
@@ -64,6 +83,7 @@
 						}))}
 						{pinModelHandler}
 						bind:value={selectedModel}
+						on:modelSelected={(event) => handleSelectorModelSelected(selectedModelIdx, event)}
 					/>
 				</div>
 			</div>
@@ -129,7 +149,7 @@
 
 {#if showSetDefault}
 	<div
-		class="relative text-left mt-[1px] ml-1 text-[0.7rem] text-gray-600 dark:text-gray-400 font-primary"
+		class="ml-2 shrink-0 whitespace-nowrap text-[0.7rem] text-gray-600 dark:text-gray-400 font-primary self-center"
 	>
 		<button on:click={saveDefaultModel}> {$i18n.t('Set as default')}</button>
 	</div>
