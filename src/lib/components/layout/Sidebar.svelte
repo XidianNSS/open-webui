@@ -67,6 +67,8 @@
 	import { slide } from 'svelte/transition';
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 
+	import { resetCollabState } from '$lib/stores/collab';
+
 	const BREAKPOINT = 768;
 
 	let scrollTop = 0;
@@ -559,6 +561,7 @@
 	const newChatHandler = async () => {
 		selectedChatId = null;
 		selectedFolder.set(null);
+		resetCollabState();
 
 		if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
 			await temporaryChatEnabled.set(true);
@@ -907,7 +910,7 @@
 					on:click={newChatHandler}
 				>
 					<img
-						crossorigin="anonymous"
+
 						src="{WEBUI_BASE_URL}/static/favicon.png"
 						class="sidebar-new-chat-icon size-6 rounded-full"
 						alt=""

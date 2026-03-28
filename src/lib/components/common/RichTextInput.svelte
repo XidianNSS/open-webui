@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import { collabState } from '$lib/stores/collab';
+
+
 
 	marked.use({
 		breaks: true,
@@ -189,6 +192,8 @@
 
 	export let className = 'input-prose min-h-fit h-full';
 	export let placeholder = $i18n.t('Type here...');
+
+
 	let _placeholder = placeholder;
 
 	$: if (placeholder !== _placeholder) {
@@ -292,6 +297,8 @@
 	const options = {
 		throwOnError: false
 	};
+
+	$: collabLocked = $collabState.enabled && $collabState.phase !== 'ready';
 
 	$: if (editor) {
 		editor.setOptions({
@@ -1000,6 +1007,15 @@
 						return false;
 					},
 					keydown: (view, event) => {
+						// if (collabLocked) {
+						// 	event.preventDefault();
+						// 	return true;
+						// }
+						if (collabLocked && event.key === 'Enter' && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+							event.preventDefault();
+							eventDispatch('blockedSubmit', { reason: 'collab_loading' });
+							return true;
+						}
 						if (messageInput) {
 							// Check if the current selection is inside a structured block (like codeBlock or list)
 							const { state } = view;
@@ -1273,7 +1289,13 @@
 	};
 </script>
 
+
+<div
+	bind:this={element}
+	class="relative w-full min-w-full {className} {!editable ? 'cursor-not-allowed' : ''}"
+/>
 {#if richText && showFormattingToolbar}
+
 	<div
 		bind:this={bubbleMenuElement}
 		id="bubble-menu"

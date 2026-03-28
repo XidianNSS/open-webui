@@ -40,6 +40,13 @@
 	import Knobs from '../icons/Knobs.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
+	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
+	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
+	import {
+		startMockCollabPreparation,
+		resetCollabState
+	} from '$lib/stores/collab';
+
 	const i18n = getContext('i18n');
 
 	export let initNewChat: Function;
@@ -59,9 +66,38 @@
 
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
+
+	const isEdgeCloudModel = (model: any) => {
+		return Boolean(
+			model?.info?.meta?.collab_enabled ||
+			(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name)) ||
+			/deepseek|edge-cloud/i.test(model?.id ?? '')
+		);
+	};
+
+	const handleModelSelected = (event: CustomEvent) => {
+		const { model } = event.detail;
+
+		if (isEdgeCloudModel(model)) {
+			startMockCollabPreparation({
+				edgeModel: 'Qwen-7B',
+				cloudModel: model?.name ?? model?.id ?? 'DeepSeek-R1',
+				edgeDevice: 'Edge-A',
+				cloudDevice: 'Cloud-B',
+				cutLayer: 16,
+				totalLayers: 32,
+				strategy: '低时延优先'
+			});
+		} else {
+			resetCollabState();
+		}
+	};
+
+
 </script>
 
 <ShareChatModal bind:show={showShareChatModal} chatId={$chatId} />
+
 
 <button
 	id="new-chat-button"
@@ -77,6 +113,7 @@
 		? 'pt-0.5 pb-1'
 		: 'pt-1 pb-1'} -mb-12 flex flex-col items-center drag-region"
 >
+
 	<div class="flex items-center w-full pl-1.5 pr-1">
 		<div
 			id="navbar-bg-gradient-to-b"
@@ -111,10 +148,27 @@
 			{$showSidebar ? 'ml-1' : ''}
 			"
 				>
+					<!--{#if showModelSelector}-->
+					<!--	<ModelSelector bind:selectedModels showSetDefault={!shareEnabled} />-->
+					<!--{/if}-->
 					{#if showModelSelector}
-						<ModelSelector bind:selectedModels showSetDefault={!shareEnabled} />
+						<div class="flex items-center gap-2 min-w-0">
+							<ModelSelector
+								bind:selectedModels
+								showSetDefault={!shareEnabled}
+								on:modelSelected={handleModelSelected}
+							/>
+						</div>
+
+						<div class="flex flex-nowrap items-center shrink-0">
+							<CollabBadge />
+						</div>
 					{/if}
 				</div>
+
+
+
+
 
 				<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
@@ -319,4 +373,6 @@
 			</div>
 		{/if}
 	</div>
+
+<!--	<CollabTopRibbon />-->
 </nav>
