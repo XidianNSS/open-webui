@@ -385,6 +385,25 @@
 		filteredItems.length,
 		Math.ceil((listScrollTop + 256) / ITEM_HEIGHT) + OVERSCAN
 	);
+
+	const emitModelSelected = (selectedItem: any, indexOverride?: number) => {
+		value = selectedItem.value;
+
+		if (typeof indexOverride === 'number') {
+			selectedModelIdx = indexOverride;
+		} else {
+			selectedModelIdx = filteredItems.findIndex((item) => item.value === selectedItem.value);
+		}
+
+		show = false;
+
+		dispatch('modelSelected', {
+			value: selectedItem.value,
+			item: selectedItem,
+			model: selectedItem.model
+		});
+	};
+
 </script>
 
 <DropdownMenu.Root
@@ -468,9 +487,25 @@
 											autocomplete="off"
 											aria-label={$i18n.t('Search In Models')}
 											on:keydown={(e) => {
-	if (e.code === 'Enter' && filteredItems.length > 0) {
-	const selectedItem = filteredItems[selectedModelIdx];
-	value = selectedItem.value;
+												if (e.code === 'Enter' && filteredItems.length > 0) {
+													const selected = filteredItems[selectedModelIdx];
+													emitModelSelected(selected, selectedModelIdx);
+													// value = filteredItems[selectedModelIdx].value;
+													// show = false;
+													return; // dont need to scroll on selection
+												} else if (e.code === 'ArrowDown') {
+													e.stopPropagation();
+													selectedModelIdx = Math.min(
+														selectedModelIdx + 1,
+														filteredItems.length - 1
+													);
+												} else if (e.code === 'ArrowUp') {
+													e.stopPropagation();
+													selectedModelIdx = Math.max(selectedModelIdx - 1, 0);
+												} else {
+													// if the user types something, reset to the top selection.
+													selectedModelIdx = 0;
+												}
 
 
 	dispatch('modelSelected', {
@@ -653,8 +688,9 @@
 													{pinModelHandler}
 													{unloadModelHandler}
 													onClick={() => {
-	value = item.value;
-	selectedModelIdx = index;
+														emitModelSelected(item, index);
+														// value = item.value;
+														// selectedModelIdx = index;
 
 
 	dispatch('modelSelected', {

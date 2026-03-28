@@ -44,6 +44,13 @@
 	import Knobs from '../icons/Knobs.svelte';
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
+	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
+	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
+	import {
+		startMockCollabPreparation,
+		resetCollabState
+	} from '$lib/stores/collab';
+
 	const i18n = getContext('i18n');
 
 	export let initNewChat: Function;
@@ -64,19 +71,37 @@
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
 
-	function handleModelSelected(event: CustomEvent) {
-	console.log('Navbar modelSelected:', event.detail);
+	const isEdgeCloudModel = (model: any) => {
+		return Boolean(
+			model?.info?.meta?.collab_enabled ||
+			(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name)) ||
+			/deepseek|edge-cloud/i.test(model?.id ?? '')
+		);
+	};
 
-	const { selectedModels: nextSelectedModels } = event.detail || {};
-	if (nextSelectedModels) {
-		selectedModels = nextSelectedModels;
-	}
+	const handleModelSelected = (event: CustomEvent) => {
+		const { model } = event.detail;
 
-	startMockCollabPreparation();
-}
+		if (isEdgeCloudModel(model)) {
+			startMockCollabPreparation({
+				edgeModel: 'Qwen-7B',
+				cloudModel: model?.name ?? model?.id ?? 'DeepSeek-R1',
+				edgeDevice: 'Edge-A',
+				cloudDevice: 'Cloud-B',
+				cutLayer: 16,
+				totalLayers: 32,
+				strategy: '低时延优先'
+			});
+		} else {
+			resetCollabState();
+		}
+	};
+
+
 </script>
 
 <ShareChatModal bind:show={showShareChatModal} chatId={$chatId} />
+
 
 <button
 	id="new-chat-button"
@@ -92,6 +117,7 @@
 		? 'pt-0.5 pb-1'
 		: 'pt-1 pb-1'} -mb-12 flex flex-col items-center drag-region"
 >
+
 	<div class="flex items-center w-full pl-1.5 pr-1">
 		<div
 			id="navbar-bg-gradient-to-b"
@@ -122,29 +148,32 @@
 				{/if}
 
 				<div
-	class="flex-1 overflow-hidden max-w-full mt-0.5 py-0.5
-		{$showSidebar ? 'ml-1' : ''}
-		"
->
-	<div class="flex flex-col gap-2 w-full">
-	<div class="flex items-center gap-2 flex-wrap">
-		{#if showModelSelector}
-			<div class="flex flex-col gap-2">
-				<ModelSelector
-					bind:selectedModels
-					showSetDefault={!shareEnabled}
-					on:modelSelected={handleModelSelected}
-				/>
-			</div>
-		{/if}
+					class="flex-1 overflow-hidden max-w-full mt-0.5 py-0.5
+			{$showSidebar ? 'ml-1' : ''}
+			"
+				>
+					<!--{#if showModelSelector}-->
+					<!--	<ModelSelector bind:selectedModels showSetDefault={!shareEnabled} />-->
+					<!--{/if}-->
+					{#if showModelSelector}
+						<div class="flex items-center gap-2 min-w-0">
+							<ModelSelector
+								bind:selectedModels
+								showSetDefault={!shareEnabled}
+								on:modelSelected={handleModelSelected}
+							/>
+						</div>
 
-		<CollabBadge />
-	</div>
+						<div class="flex flex-nowrap items-center shrink-0">
+							<CollabBadge />
+						</div>
+					{/if}
+				</div>
 
-	<CollabTopRibbon />
-	<CollabSummaryBar />
-</div>
-</div>
+
+
+
+
 				<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
 
@@ -285,4 +314,67 @@
 			</div>
 		</div>
 	</div>
+
+	{#if $temporaryChatEnabled && ($chatId ?? '').startsWith('local:')}
+		<div class=" w-full z-30 text-center">
+			<div class="text-xs text-gray-500">{$i18n.t('Temporary Chat')}</div>
+		</div>
+	{/if}
+
+	<div class="absolute top-[100%] left-0 right-0 h-fit">
+		{#if !history.currentId && !$chatId && ($banners.length > 0 || ($config?.license_metadata?.type ?? null) === 'trial' || (($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats))}
+			<div class=" w-full z-30">
+				<div class=" flex flex-col gap-1 w-full">
+					{#if ($config?.license_metadata?.type ?? null) === 'trial'}
+						<Banner
+							banner={{
+								type: 'info',
+								title: 'Trial License',
+								content: $i18n.t(
+									'You are currently using a trial license. Please contact support to upgrade your license.'
+								)
+							}}
+						/>
+					{/if}
+
+					{#if ($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats}
+						<Banner
+							banner={{
+								type: 'error',
+								title: 'License Error',
+								content: $i18n.t(
+									'Exceeded the number of seats in your license. Please contact support to increase the number of seats.'
+								)
+							}}
+						/>
+					{/if}
+
+					{#each $banners.filter((b) => ![...JSON.parse(localStorage.getItem('dismissedBannerIds') ?? '[]'), ...closedBannerIds].includes(b.id)) as banner (banner.id)}
+						<Banner
+							{banner}
+							on:dismiss={(e) => {
+								const bannerId = e.detail;
+
+								if (banner.dismissible) {
+									localStorage.setItem(
+										'dismissedBannerIds',
+										JSON.stringify(
+											[
+												bannerId,
+												...JSON.parse(localStorage.getItem('dismissedBannerIds') ?? '[]')
+											].filter((id) => $banners.find((b) => b.id === id))
+										)
+									);
+								} else {
+									closedBannerIds = [...closedBannerIds, bannerId];
+								}
+							}}
+						/>
+					{/each}
+				</div>
+			</div>
+		{/if}
+	</div>
+
+<!--	<CollabTopRibbon />-->
 </nav>

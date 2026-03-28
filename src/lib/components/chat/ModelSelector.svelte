@@ -38,6 +38,22 @@
 		settings.set({ ...$settings, pinnedModels: pinnedModels });
 		await updateUserSettings(localStorage.token, { ui: $settings });
 	};
+	const handleSelectorModelSelected = (selectedModelIdx: number, event: CustomEvent) => {
+		const { value, item, model } = event.detail;
+
+		selectedModels[selectedModelIdx] = value;
+		selectedModels = [...selectedModels];
+
+		console.log('outer modelSelected', { selectedModelIdx, value });
+		dispatch('modelSelected', {
+			index: selectedModelIdx,
+			value,
+			item,
+			model,
+			selectedModels: [...selectedModels]
+		});
+	};
+
 
 	function handleModelSelected(event: CustomEvent, selectedModelIdx: number) {
 		const { value, item, model } = event.detail || {};
@@ -65,6 +81,8 @@
 			selectedModels = _selectedModels;
 		}
 	}
+
+
 </script>
 
 <div class="flex flex-col w-full items-start">
@@ -82,7 +100,7 @@
 						}))}
 						{pinModelHandler}
 						bind:value={selectedModel}
-						on:modelSelected={(event) => handleModelSelected(event, selectedModelIdx)}
+						on:modelSelected={(event) => handleSelectorModelSelected(selectedModelIdx, event)}
 					/>
 				</div>
 			</div>
@@ -148,7 +166,7 @@
 
 {#if showSetDefault}
 	<div
-		class="relative text-left mt-[1px] ml-1 text-[0.7rem] text-gray-600 dark:text-gray-400 font-primary"
+		class="ml-2 shrink-0 whitespace-nowrap text-[0.7rem] text-gray-600 dark:text-gray-400 font-primary self-center"
 	>
 		<button on:click={saveDefaultModel}> {$i18n.t('Set as default')}</button>
 	</div>

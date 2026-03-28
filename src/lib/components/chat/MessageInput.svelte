@@ -99,7 +99,7 @@
 	import InputModal from '../common/InputModal.svelte';
 	import Expand from '../icons/Expand.svelte';
 	import QueuedMessageItem from './MessageInput/QueuedMessageItem.svelte';
-
+	import { collabState } from '$lib/stores/collab';
 	const i18n = getContext('i18n');
 
 	export let onUpload: Function = (e) => {};
@@ -453,7 +453,7 @@
 
 	let user = null;
 	export let placeholder = '';
-
+	$: sendLocked = $collabState.enabled && $collabState.phase !== 'ready';
 	let visionCapableModels = [];
 	$: visionCapableModels = (atSelectedModel?.id ? [atSelectedModel.id] : selectedModels).filter(
 		(model) => $models.find((m) => m.id === model)?.info?.meta?.capabilities?.vision ?? true
@@ -1207,6 +1207,10 @@
 					<form
 						class="w-full flex flex-col gap-1.5 {recording ? 'hidden' : ''}"
 						on:submit|preventDefault={() => {
+							if (sendLocked) {
+								toast.info('模型协同加载中，暂时不能发送');
+								return;
+						}
 							// check if selectedModels support image input
 							dispatch('submit', prompt);
 						}}
@@ -1993,17 +1997,28 @@
 										{:else}
 											<div class=" flex items-center">
 												<Tooltip
-													content={uploadPending
-														? $i18n.t('Waiting for upload...')
-														: $i18n.t('Send message')}
+												// 	content={uploadPending
+												// 		? $i18n.t('Waiting for upload...')
+												// 		: $i18n.t('Send message')}
+													content={sendLocked
+														? '模型协同加载中，暂时不能发送'
+														: uploadPending
+															? $i18n.t('Waiting for upload...')
+															: $i18n.t('Send message')}
 												>
 													<button
+														// id="send-message-button"
+														// class="{!(prompt === '' && files.length === 0) || uploadPending
+														// 	? 'bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100 '
+														// 	: 'text-white bg-gray-200 dark:text-gray-900 dark:bg-gray-700 disabled'} transition rounded-full p-1.5 self-center"
+														// type="submit"
+														// disabled={(prompt === '' && files.length === 0) || uploadPending}
 														id="send-message-button"
-														class="{!(prompt === '' && files.length === 0) || uploadPending
-															? 'bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100 '
-															: 'text-white bg-gray-200 dark:text-gray-900 dark:bg-gray-700 disabled'} transition rounded-full p-1.5 self-center"
+														class="{(!(prompt === '' && files.length === 0) || uploadPending) && !sendLocked
+															? 'bg-black text-white hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100'
+															: 'bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500 cursor-not-allowed opacity-60'} transition rounded-full p-1.5 self-center"
 														type="submit"
-														disabled={(prompt === '' && files.length === 0) || uploadPending}
+														disabled={(prompt === '' && files.length === 0) || uploadPending || sendLocked}
 													>
 														{#if uploadPending}
 															<Spinner className="size-5" />

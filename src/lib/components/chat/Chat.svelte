@@ -4,7 +4,7 @@
 	import { PaneGroup, Pane, PaneResizer } from 'paneforge';
 
 	import { getContext, onDestroy, onMount, tick } from 'svelte';
-	import { fade } from 'svelte/transition';
+	import { slide } from 'svelte/transition';
 	const i18n: Writable<i18nType> = getContext('i18n');
 
 	import { goto } from '$app/navigation';
@@ -108,7 +108,12 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
 	import { getBanners } from '$lib/apis/configs';
-
+	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
+	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
+	import {
+		startMockCollabPreparation,
+		resetCollabState
+	} from '$lib/stores/collab';
 	export let chatIdProp = '';
 
 	let loading = true;
@@ -2718,7 +2723,7 @@
 	id="chat-container"
 >
 	{#if !loading}
-		<div in:fade={{ duration: 50 }} class="w-full h-full flex flex-col">
+		<div in:slide={{ duration: 50}} class="w-full h-full flex flex-col">
 			{#if $selectedFolder && $selectedFolder?.meta?.background_image_url}
 				<div
 					class="absolute top-0 left-0 w-full h-full bg-cover bg-center bg-no-repeat"
@@ -2804,6 +2809,7 @@
 
 					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
 								id="messages-container"
@@ -2929,7 +2935,11 @@
 								</div>
 							</div>
 						{:else}
-							<div class="flex items-center h-full">
+								<div class="flex h-full w-full flex-col items-center px-4 pt-12 py-6">
+									<div class="w-full max-w-6xl">
+										<CollabTopRibbon />
+									</div>
+
 								<Placeholder
 									{history}
 									{selectedModels}
