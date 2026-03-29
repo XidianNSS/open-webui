@@ -110,10 +110,7 @@
 	import { getBanners } from '$lib/apis/configs';
 	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
 	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
-	import {
-		startMockCollabPreparation,
-		resetCollabState
-	} from '$lib/stores/collab';
+	import { collabState } from '$lib/stores/collab';
 	export let chatIdProp = '';
 
 	let loading = true;
@@ -2809,6 +2806,11 @@
 
 					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+							{#if $collabState.enabled && $collabState.ribbonExpanded}
+								<div class="w-full max-w-[960px] shrink-0 self-center px-4 pt-2">
+									<CollabTopRibbon />
+								</div>
+							{/if}
 
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
@@ -2935,10 +2937,10 @@
 								</div>
 							</div>
 						{:else}
-								<div class="flex h-full w-full flex-col items-center px-4 pt-12 py-6">
-									<div class="w-full max-w-6xl">
-										<CollabTopRibbon />
-									</div>
+							<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
+								<div class="w-full max-w-[960px] pt-2">
+									<CollabTopRibbon />
+								</div>
 
 								<Placeholder
 									{history}
