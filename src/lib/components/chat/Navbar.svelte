@@ -79,12 +79,15 @@
 		);
 	};
 
-	const getPrimarySelectedModel = () => {
-		if (!Array.isArray(selectedModels) || selectedModels.length === 0) {
+	const getPrimarySelectedModel = (
+		selectedModelIds: unknown[] = [],
+		availableModels: any[] = []
+	) => {
+		if (!Array.isArray(selectedModelIds) || selectedModelIds.length === 0) {
 			return null;
 		}
 
-		const selectedModelId = selectedModels.find(
+		const selectedModelId = selectedModelIds.find(
 			(modelId) => typeof modelId === 'string' && modelId.length > 0
 		);
 
@@ -92,7 +95,16 @@
 			return null;
 		}
 
-		return $models.find((model) => model.id === selectedModelId) ?? null;
+		const matchedModel = availableModels.find((model) => model.id === selectedModelId);
+
+		if (matchedModel) {
+			return matchedModel;
+		}
+
+		return {
+			id: selectedModelId,
+			name: selectedModelId
+		};
 	};
 
 	const buildMockCollabPayload = (model: any) => {
@@ -134,9 +146,8 @@
 		syncCollabState(model);
 	};
 
-	$: if ($models.length > 0) {
-		syncCollabState(getPrimarySelectedModel());
-	}
+	$: primarySelectedModel = getPrimarySelectedModel(selectedModels, $models);
+	$: syncCollabState(primarySelectedModel);
 
 
 </script>

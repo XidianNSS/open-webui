@@ -108,9 +108,12 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
 	import { getBanners } from '$lib/apis/configs';
-	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
 	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
-	import { collabState } from '$lib/stores/collab';
+	import {
+		collabState,
+		resetCollabState,
+		startMockCollabPreparation
+	} from '$lib/stores/collab';
 	export let chatIdProp = '';
 
 	let loading = true;
@@ -144,6 +147,41 @@
 	} else {
 		selectedModelIds = selectedModels;
 	}
+
+	const isEdgeCloudModelId = (modelId: string = '') => {
+		return /deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)/i.test(modelId);
+	};
+
+	const syncPageCollabState = (modelIds: string[] = [], enabled = false) => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		const primaryModelId = modelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0);
+
+		if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
+			if (enabled) {
+				resetCollabState();
+			}
+			return;
+		}
+
+		if (enabled) {
+			return;
+		}
+
+		startMockCollabPreparation({
+			edgeModel: primaryModelId,
+			cloudModel: primaryModelId,
+			edgeDevice: 'Edge-A',
+			cloudDevice: 'Cloud-B',
+			cutLayer: 16,
+			totalLayers: 32,
+			strategy: '低时延优先'
+		});
+	};
+
+	$: syncPageCollabState(selectedModels, $collabState.enabled);
 
 	let selectedToolIds = [];
 	let selectedFilterIds = [];
