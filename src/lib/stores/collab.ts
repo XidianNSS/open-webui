@@ -208,7 +208,7 @@ export const startMockCollabPreparation = (payload?: {
 				...s,
 				phase: 'ready',
 				overallProgress: 100,
-				ribbonExpanded: false,
+				ribbonExpanded: true,
 				edge: { ...s.edge, progress: 100, status: '边端已就绪' },
 				cloud: { ...s.cloud, progress: 100, status: '云端已就绪' }
 			}));

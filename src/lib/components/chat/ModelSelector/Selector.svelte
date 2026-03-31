@@ -507,34 +507,15 @@
 													selectedModelIdx = 0;
 												}
 
-
-	dispatch('modelSelected', {
-		value: selectedItem.value,
-		item: selectedItem,
-		model: selectedItem.model
-	});
-
-	show = false;
-	return; // dont need to scroll on selection
-}
-	else if (e.code === 'ArrowDown') {
-		e.stopPropagation();
-		selectedModelIdx = Math.min(selectedModelIdx + 1, filteredItems.length - 1);
-	} else if (e.code === 'ArrowUp') {
-		e.stopPropagation();
-		selectedModelIdx = Math.max(selectedModelIdx - 1, 0);
-	} else {
-		// if the user types something, reset to the top selection.
-		selectedModelIdx = 0;
-	}
-
-	const item = document.querySelector(`[data-arrow-selected="true"]`);
-	item?.scrollIntoView({
-		block: 'center',
-		inline: 'nearest',
-		behavior: 'instant'
-	});
-}}
+												const item = document.querySelector(
+													`[data-arrow-selected="true"]`
+												);
+												item?.scrollIntoView({
+													block: 'center',
+													inline: 'nearest',
+													behavior: 'instant'
+												});
+											}}
 										/>
 									</div>
 								{/if}
