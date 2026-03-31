@@ -19,7 +19,6 @@
 		chats,
 		currentChatPage
 	} from '$lib/stores';
-	import { collabState } from '$lib/stores/collab';
 	import { sanitizeResponseContent, extractCurlyBraceWords } from '$lib/utils';
 	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
 
@@ -72,14 +71,9 @@
 	}
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
-	$: compactCollabLayout = $collabState.enabled && $collabState.ribbonExpanded;
 </script>
 
-<div
-	class={`m-auto w-full max-w-6xl px-2 text-center transition-all duration-200 @2xl:px-20 ${
-		compactCollabLayout ? 'translate-y-0 py-5 md:py-6' : 'translate-y-6 py-24'
-	}`}
->
+<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
@@ -209,11 +203,7 @@
 				</div>
 			{/if}
 
-			<div
-				class={`text-base font-normal @md:max-w-3xl w-full ${
-					compactCollabLayout ? 'py-2' : 'py-3'
-				} ${atSelectedModel ? 'mt-2' : ''}`}
-			>
+			<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
 				<MessageInput
 					bind:this={messageInput}
 					{history}
@@ -252,12 +242,7 @@
 			<FolderPlaceholder folder={$selectedFolder} />
 		</div>
 	{:else}
-		<div
-			class={`mx-auto max-w-2xl font-primary ${
-				compactCollabLayout ? 'mt-1' : 'mt-2'
-			}`}
-			in:fade={{ duration: 200, delay: 200 }}
-		>
+		<div class="mx-auto max-w-2xl font-primary mt-2" in:fade={{ duration: 200, delay: 200 }}>
 			<div class="mx-5">
 				<Suggestions
 					suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??

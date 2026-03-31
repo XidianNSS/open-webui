@@ -108,11 +108,11 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
 	import { getBanners } from '$lib/apis/configs';
+	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
 	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
 	import {
-		collabState,
-		resetCollabState,
-		startMockCollabPreparation
+		startMockCollabPreparation,
+		resetCollabState
 	} from '$lib/stores/collab';
 	export let chatIdProp = '';
 
@@ -147,41 +147,6 @@
 	} else {
 		selectedModelIds = selectedModels;
 	}
-
-	const isEdgeCloudModelId = (modelId: string = '') => {
-		return /deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)/i.test(modelId);
-	};
-
-	const syncPageCollabState = (modelIds: string[] = [], enabled = false) => {
-		if (typeof window === 'undefined') {
-			return;
-		}
-
-		const primaryModelId = modelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0);
-
-		if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
-			if (enabled) {
-				resetCollabState();
-			}
-			return;
-		}
-
-		if (enabled) {
-			return;
-		}
-
-		startMockCollabPreparation({
-			edgeModel: primaryModelId,
-			cloudModel: primaryModelId,
-			edgeDevice: 'Edge-A',
-			cloudDevice: 'Cloud-B',
-			cutLayer: 16,
-			totalLayers: 32,
-			strategy: '低时延优先'
-		});
-	};
-
-	$: syncPageCollabState(selectedModels, $collabState.enabled);
 
 	let selectedToolIds = [];
 	let selectedFilterIds = [];
@@ -2844,11 +2809,6 @@
 
 					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
-							{#if $collabState.enabled && $collabState.ribbonExpanded}
-								<div class="w-full max-w-[960px] shrink-0 self-center px-4 pt-2">
-									<CollabTopRibbon />
-								</div>
-							{/if}
 
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
@@ -2975,10 +2935,10 @@
 								</div>
 							</div>
 						{:else}
-							<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
-								<div class="w-full max-w-[960px] pt-2">
-									<CollabTopRibbon />
-								</div>
+								<div class="flex h-full w-full flex-col items-center px-4 pt-12 py-6">
+									<div class="w-full max-w-6xl">
+										<CollabTopRibbon />
+									</div>
 
 								<Placeholder
 									{history}

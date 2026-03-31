@@ -8,7 +8,6 @@
 		chatId,
 		config,
 		mobile,
-		models,
 		settings,
 		showArchivedChats,
 		showControls,
@@ -23,7 +22,11 @@
 
 	import ShareChatModal from '../chat/ShareChatModal.svelte';
 	import ModelSelector from '../chat/ModelSelector.svelte';
+	import CollabBadge from '../chat/CollabBadge.svelte';
+	import CollabTopRibbon from '../chat/CollabTopRibbon.svelte';
+	import CollabSummaryBar from '../chat/CollabSummaryBar.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
+	import { startMockCollabPreparation } from '$lib/stores/collab';
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
@@ -67,87 +70,32 @@
 
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
-	let activeCollabModelId = '';
 
 	const isEdgeCloudModel = (model: any) => {
 		return Boolean(
 			model?.info?.meta?.collab_enabled ||
 			(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name)) ||
-			/deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)/i.test(
-				`${model?.id ?? ''} ${model?.name ?? ''}`
-			)
+			/deepseek|edge-cloud/i.test(model?.id ?? '')
 		);
-	};
-
-	const getPrimarySelectedModel = (
-		selectedModelIds: unknown[] = [],
-		availableModels: any[] = []
-	) => {
-		if (!Array.isArray(selectedModelIds) || selectedModelIds.length === 0) {
-			return null;
-		}
-
-		const selectedModelId = selectedModelIds.find(
-			(modelId) => typeof modelId === 'string' && modelId.length > 0
-		);
-
-		if (!selectedModelId) {
-			return null;
-		}
-
-		const matchedModel = availableModels.find((model) => model.id === selectedModelId);
-
-		if (matchedModel) {
-			return matchedModel;
-		}
-
-		return {
-			id: selectedModelId,
-			name: selectedModelId
-		};
-	};
-
-	const buildMockCollabPayload = (model: any) => {
-		const modelLabel = model?.name ?? model?.id ?? 'qwen3:8b';
-
-		return {
-			edgeModel: modelLabel,
-			cloudModel: modelLabel,
-			edgeDevice: 'Edge-A',
-			cloudDevice: 'Cloud-B',
-			cutLayer: 16,
-			totalLayers: 32,
-			strategy: '低时延优先'
-		};
-	};
-
-	const syncCollabState = (model: any) => {
-		const nextCollabModelId = model?.id ?? model?.name ?? '';
-
-		if (!isEdgeCloudModel(model)) {
-			if (activeCollabModelId !== '') {
-				activeCollabModelId = '';
-				resetCollabState();
-			}
-			return;
-		}
-
-		if (nextCollabModelId !== '' && nextCollabModelId === activeCollabModelId) {
-			return;
-		}
-
-		activeCollabModelId = nextCollabModelId;
-		startMockCollabPreparation(buildMockCollabPayload(model));
 	};
 
 	const handleModelSelected = (event: CustomEvent) => {
 		const { model } = event.detail;
 
-		syncCollabState(model);
+		if (isEdgeCloudModel(model)) {
+			startMockCollabPreparation({
+				edgeModel: 'Qwen-7B',
+				cloudModel: model?.name ?? model?.id ?? 'DeepSeek-R1',
+				edgeDevice: 'Edge-A',
+				cloudDevice: 'Cloud-B',
+				cutLayer: 16,
+				totalLayers: 32,
+				strategy: '低时延优先'
+			});
+		} else {
+			resetCollabState();
+		}
 	};
-
-	$: primarySelectedModel = getPrimarySelectedModel(selectedModels, $models);
-	$: syncCollabState(primarySelectedModel);
 
 
 </script>
