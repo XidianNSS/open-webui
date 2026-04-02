@@ -22,11 +22,7 @@
 
 	import ShareChatModal from '../chat/ShareChatModal.svelte';
 	import ModelSelector from '../chat/ModelSelector.svelte';
-	import CollabBadge from '../chat/CollabBadge.svelte';
-	import CollabTopRibbon from '../chat/CollabTopRibbon.svelte';
-	import CollabSummaryBar from '../chat/CollabSummaryBar.svelte';
 	import Tooltip from '../common/Tooltip.svelte';
-	import { startMockCollabPreparation } from '$lib/stores/collab';
 	import Menu from '$lib/components/layout/Navbar/Menu.svelte';
 	import UserMenu from '$lib/components/layout/Sidebar/UserMenu.svelte';
 	import AdjustmentsHorizontal from '../icons/AdjustmentsHorizontal.svelte';
