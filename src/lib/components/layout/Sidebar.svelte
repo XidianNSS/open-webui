@@ -64,10 +64,11 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import PinnedModelList from './Sidebar/PinnedModelList.svelte';
 	import Note from '../icons/Note.svelte';
+	import Collaboration from '../collab/Collaboration.svelte';
 	import { slide } from 'svelte/transition';
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 
-	import { resetCollabState } from '$lib/stores/collab';
+	import { collabState, resetCollabState, setCollabRibbonExpanded } from '$lib/stores/collab';
 
 	const BREAKPOINT = 768;
 
@@ -588,6 +589,29 @@
 	};
 
 	const isWindows = /Windows/i.test(navigator.userAgent);
+
+	$: collabShortcutTooltip = !$collabState.enabled
+		? '边云协同（选择协同模型后可用）'
+		: $collabState.ribbonExpanded
+			? '收起边云协同面板'
+			: '打开边云协同面板';
+
+	const toggleCollabPanel = async (event?: Event) => {
+		event?.stopImmediatePropagation();
+		event?.preventDefault();
+
+		if (!$collabState.enabled) {
+			toast.info('请先选择支持边云协同的模型');
+			return;
+		}
+
+		const nextExpanded = !$collabState.ribbonExpanded;
+		setCollabRibbonExpanded(nextExpanded);
+
+		if ($mobile && nextExpanded) {
+			showSidebar.set(false);
+		}
+	};
 </script>
 
 <ArchivedChatsModal
@@ -765,6 +789,33 @@
 						>
 							<div class=" self-center flex items-center justify-center size-9">
 								<Search className="size-4.5" />
+							</div>
+						</button>
+					</Tooltip>
+				</div>
+
+				<div>
+					<Tooltip content={collabShortcutTooltip} placement="right">
+						<button
+							class="cursor-pointer flex rounded-xl transition group relative {$collabState.enabled
+								? $collabState.ribbonExpanded
+									? 'bg-emerald-100/80 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.18)]'
+									: 'hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-200'
+								: 'text-gray-400 dark:text-gray-600 hover:bg-gray-100/70 dark:hover:bg-gray-850/70'}"
+							on:click={toggleCollabPanel}
+							draggable="false"
+							aria-label={collabShortcutTooltip}
+						>
+							<div class="self-center flex items-center justify-center size-9 relative">
+								<Collaboration className="size-4.5" strokeWidth="1.9" />
+
+								{#if $collabState.enabled}
+									<span
+										class="absolute right-2 top-2 size-1.5 rounded-full {$collabState.ribbonExpanded
+											? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]'
+											: 'bg-sky-400'}"
+									></span>
+								{/if}
 							</div>
 						</button>
 					</Tooltip>
@@ -1001,6 +1052,52 @@
 								<div class=" self-center text-sm font-primary">{$i18n.t('Search')}</div>
 							</div>
 							<HotkeyHint name="search" className=" group-hover:visible invisible" />
+						</button>
+					</div>
+
+					<div class="px-[0.4375rem] flex justify-center">
+						<button
+							id="sidebar-collab-button"
+							class="group grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 transition outline-none {$collabState.enabled
+								? $collabState.ribbonExpanded
+									? 'bg-emerald-50 text-emerald-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.14)] dark:bg-emerald-400/10 dark:text-emerald-300'
+									: 'text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900'
+								: 'text-gray-400 dark:text-gray-500 hover:bg-gray-100/70 dark:hover:bg-gray-900/70'}"
+							on:click={toggleCollabPanel}
+							draggable="false"
+							aria-label={collabShortcutTooltip}
+						>
+							<div class="self-center relative">
+								<Collaboration className="size-4.5" strokeWidth="1.9" />
+
+								{#if $collabState.enabled}
+									<span
+										class="absolute -right-1 -top-0.5 size-1.5 rounded-full {$collabState.ribbonExpanded
+											? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]'
+											: 'bg-sky-400'}"
+									></span>
+								{/if}
+							</div>
+
+							<div class="flex flex-1 self-center translate-y-[0.5px]">
+								<div class="self-center text-sm font-primary">边云协同</div>
+							</div>
+
+							<div
+								class="self-center rounded-full px-2 py-0.5 text-[11px] font-medium {$collabState.enabled
+									? $collabState.ribbonExpanded
+										? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300'
+										: 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300'
+									: 'bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-500'}"
+							>
+								{#if !$collabState.enabled}
+									待命
+								{:else if $collabState.ribbonExpanded}
+									展开中
+								{:else}
+									已收起
+								{/if}
+							</div>
 						</button>
 					</div>
 

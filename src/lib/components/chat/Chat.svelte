@@ -97,7 +97,7 @@
 	import MessageInput from '$lib/components/chat/MessageInput.svelte';
 	import Messages from '$lib/components/chat/Messages.svelte';
 	import Navbar from '$lib/components/chat/Navbar.svelte';
-	import CollabSummaryBar from '$lib/components/chat/CollabSummaryBar.svelte';
+
 	import ChatControls from './ChatControls.svelte';
 	import EventConfirmDialog from '../common/ConfirmDialog.svelte';
 	import Placeholder from './Placeholder.svelte';
@@ -111,8 +111,9 @@
 	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
 	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
 	import {
-		startMockCollabPreparation,
-		resetCollabState
+		collabState,
+		resetCollabState,
+		startMockCollabPreparation
 	} from '$lib/stores/collab';
 	export let chatIdProp = '';
 
@@ -181,6 +182,41 @@
 	$: if (chatIdProp) {
 		navigateHandler();
 	}
+
+	const isEdgeCloudModelId = (modelId: string = '') => {
+		return /deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)/i.test(modelId);
+	};
+
+	const syncPageCollabState = (modelIds: string[] = [], enabled = false) => {
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		const primaryModelId = modelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0);
+
+		if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
+			if (enabled) {
+				resetCollabState();
+			}
+			return;
+		}
+
+		if (enabled) {
+			return;
+		}
+
+		startMockCollabPreparation({
+			edgeModel: primaryModelId,
+			cloudModel: primaryModelId,
+			edgeDevice: 'Edge-A',
+			cloudDevice: 'Cloud-B',
+			cutLayer: 16,
+			totalLayers: 32,
+			strategy: '低时延优先'
+		});
+	};
+
+	$: syncPageCollabState(selectedModels, $collabState.enabled);
 
 	const navigateHandler = async () => {
 		loading = true;
@@ -2810,6 +2846,11 @@
 					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
 						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 
+							{#if $collabState.enabled && $collabState.ribbonExpanded}
+								<div class="w-full max-w-[960px] shrink-0 self-center px-4 pt-2">
+									<CollabTopRibbon />
+								</div>
+							{/if}
 							<div
 								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
 								id="messages-container"
@@ -2848,9 +2889,6 @@
 
 							<div class=" pb-2 {dragged ? 'z-0' : 'z-10'}">
 
-								<div class="mb-2">
-									<CollabSummaryBar />
-								</div>
 								<MessageInput
 									bind:this={messageInput}
 									{history}
@@ -2935,8 +2973,8 @@
 								</div>
 							</div>
 						{:else}
-								<div class="flex h-full w-full flex-col items-center px-4 pt-12 py-6">
-									<div class="w-full max-w-6xl">
+								<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
+									<div class="w-full max-w-[960px] pt-2">
 										<CollabTopRibbon />
 									</div>
 
