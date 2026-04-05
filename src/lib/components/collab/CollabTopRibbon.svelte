@@ -3,30 +3,43 @@
 	import { collabState, setCollabRibbonExpanded } from '$lib/stores/collab';
 	import Collaboration from './Collaboration.svelte';
 
-	$: totalLayers = Math.max($collabState.split.totalLayers ?? 1, 1);
-	$: cutLayer = Math.min(Math.max($collabState.split.cutLayer ?? 0, 0), totalLayers - 1);
-	$: layerList = Array.from({ length: totalLayers }, (_, i) => i);
+	const clamp = (value: number, min: number, max: number) => {
+		return Math.min(Math.max(value, min), max);
+	};
 
+	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
+
+	// 兼容旧数据：如果没有百分比字段，则根据 layer 兜底换算
 	$: edgeLayerCount = Math.max(
 		($collabState.edge.endLayer ?? 0) - ($collabState.edge.startLayer ?? 0) + 1,
 		0
 	);
-	$: cloudLayerCount = Math.max(
-		($collabState.cloud.endLayer ?? 0) - ($collabState.cloud.startLayer ?? 0) + 1,
-		0
+	$: fallbackEdgePercent = clamp(Math.round((edgeLayerCount / totalLayers) * 100), 0, 100);
+
+	$: edgePercent = clamp(
+		Math.round($collabState.split?.edgePercent ?? fallbackEdgePercent),
+		0,
+		100
 	);
+	$: cloudPercent = clamp(
+		Math.round($collabState.split?.cloudPercent ?? (100 - edgePercent)),
+		0,
+		100
+	);
+
+	// 保证长条宽度始终可用
+	$: totalPercent = Math.max(edgePercent + cloudPercent, 1);
+	$: edgeWidth = (edgePercent / totalPercent) * 100;
+	$: cloudWidth = (cloudPercent / totalPercent) * 100;
 
 	$: overallProgress = Math.max(
 		$collabState.overallProgress ?? Math.max($collabState.edge.progress, $collabState.cloud.progress),
 		0
 	);
-	$: edgeWidth = (edgeLayerCount / totalLayers) * 100;
-	$: cloudWidth = (cloudLayerCount / totalLayers) * 100;
 
 	$: edgeDeviceLabel = $collabState.edge.device || $collabState.edge.name || 'Edge-A';
 	$: cloudDeviceLabel = $collabState.cloud.device || $collabState.cloud.name || 'Cloud-B';
-	$: edgeLayerLabel = `L${$collabState.edge.startLayer}-L${$collabState.edge.endLayer}`;
-	$: cloudLayerLabel = `L${$collabState.cloud.startLayer}-L${$collabState.cloud.endLayer}`;
+
 	$: overallStatusLabel = overallProgress >= 100 ? '已就绪' : '准备中';
 	$: networkStatusLabel =
 		$collabState.network.status === 'connected'
@@ -74,7 +87,7 @@
 					<div
 						class="inline-flex items-center rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
 					>
-						切分点 Layer {cutLayer}
+						边端 {edgePercent}% / 云端 {cloudPercent}%
 					</div>
 
 					<button
@@ -180,10 +193,10 @@
 					<div class="flex flex-wrap items-start justify-between gap-3">
 						<div>
 							<div class="text-[14px] font-semibold text-[#18212F] dark:text-white">
-								切分方案
+								切分推理策略
 							</div>
 							<div class="mt-1 text-[12px] text-[#667085] dark:text-gray-400">
-								边端先处理前段层，云端接力后段层
+								边端与云端按推理占比协同分担计算任务
 							</div>
 						</div>
 
@@ -191,12 +204,12 @@
 							<div
 								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
 							>
-								边端 {edgeLayerLabel}
+								边端 {edgePercent}%
 							</div>
 							<div
 								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
 							>
-								云端 {cloudLayerLabel}
+								云端 {cloudPercent}%
 							</div>
 							<div
 								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
@@ -217,9 +230,9 @@
 					</div>
 
 					<div
-						class="mt-4 rounded-[16px] border border-[#ECF1F6] bg-white p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/8 dark:bg-[#0B1118]"
+						class="mt-4 rounded-[16px] border border-[#ECF1F6] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/8 dark:bg-[#0B1118]"
 					>
-						<div class="relative overflow-hidden rounded-xl bg-[#EAF0F6] dark:bg-white/8">
+						<div class="relative overflow-hidden rounded-2xl bg-[#EAF0F6] shadow-sm dark:bg-white/8">
 							<div
 								class="absolute inset-y-0 left-0 bg-[linear-gradient(90deg,#39B5FF_0%,#B9E8D8_100%)]"
 								style={`width:${edgeWidth}%`}
@@ -231,47 +244,44 @@
 							></div>
 
 							<div
-								class="pointer-events-none absolute inset-0 opacity-20"
-								style="background-image:repeating-linear-gradient(120deg,rgba(255,255,255,.58)_0_10px,transparent_10px_20px);"
+								class="pointer-events-none absolute inset-0 opacity-15"
+								style="background-image:repeating-linear-gradient(120deg,rgba(255,255,255,.42)_0_10px,transparent_10px_20px);"
 							></div>
 
-							<div
-								class="pointer-events-none absolute inset-0 grid"
-								style={`grid-template-columns: repeat(${totalLayers}, minmax(0, 1fr));`}
-							>
-								{#each layerList as layer}
-									<div class={layer !== totalLayers - 1 ? 'border-r border-white/25' : ''}></div>
-								{/each}
-							</div>
+							{#if edgeWidth > 0 && cloudWidth > 0}
+								<div
+									class="pointer-events-none absolute inset-y-1.5 z-[2] w-[2px] rounded-full bg-white/90 shadow-[0_0_0_1px_rgba(255,255,255,.45)]"
+									style={`left: calc(${edgeWidth}% - 1px);`}
+								></div>
+							{/if}
 
-							<div
-								class="pointer-events-none absolute inset-y-0 z-[2] w-[2px] bg-white/90 shadow-[0_0_0_1px_rgba(255,255,255,.45)]"
-								style={`left: calc(${edgeWidth}% - 1px);`}
-							></div>
+							<div class="relative flex h-14">
+								<div
+									class="flex items-center px-5 text-[13px] font-semibold text-white"
+									style={`width:${edgeWidth}%`}
+								>
+									<span class="truncate drop-shadow-sm">边端 {edgePercent}%</span>
+								</div>
 
-							<div class="relative flex h-10 items-center justify-between px-4">
-								<div class="text-[12px] font-semibold text-white">{edgeLayerLabel} 边端</div>
-								<div class="text-[12px] font-semibold text-white">{cloudLayerLabel} 云端</div>
+								<div
+									class="flex items-center justify-end px-5 text-[13px] font-semibold text-white"
+									style={`width:${cloudWidth}%`}
+								>
+									<span class="truncate drop-shadow-sm">云端 {cloudPercent}%</span>
+								</div>
 							</div>
 						</div>
 
-						<div
-							class="mt-3 grid items-center gap-y-1 text-center text-[11px] md:text-[12px]"
-							style={`grid-template-columns: repeat(${totalLayers}, minmax(0, 1fr));`}
-						>
-							{#each layerList as layer}
-								<div class="flex justify-center">
-									<span
-										class={`flex h-6 min-w-[22px] items-center justify-center rounded-full tabular-nums ${
-											layer === cutLayer
-												? 'bg-amber-100 text-amber-700 shadow-sm dark:bg-amber-300/15 dark:text-amber-300'
-												: 'text-[#667085] dark:text-gray-400'
-										} ${layer === cutLayer ? 'font-semibold' : ''}`}
-									>
-										{layer}
-									</span>
-								</div>
-							{/each}
+						<div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#667085] dark:text-gray-400">
+							<div class="flex items-center gap-2">
+								<span class="inline-block h-2.5 w-2.5 rounded-full bg-sky-400"></span>
+								<span>边端承担 {edgePercent}% 推理负载</span>
+							</div>
+
+							<div class="flex items-center gap-2">
+								<span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400"></span>
+								<span>云端承担 {cloudPercent}% 推理负载</span>
+							</div>
 						</div>
 					</div>
 				</div>

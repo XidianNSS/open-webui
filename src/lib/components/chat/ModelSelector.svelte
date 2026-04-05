@@ -38,6 +38,7 @@
 		settings.set({ ...$settings, pinnedModels: pinnedModels });
 		await updateUserSettings(localStorage.token, { ui: $settings });
 	};
+
 	const handleSelectorModelSelected = (selectedModelIdx: number, event: CustomEvent) => {
 		const { value, item, model } = event.detail;
 
@@ -53,7 +54,6 @@
 			selectedModels: [...selectedModels]
 		});
 	};
-
 
 	function handleModelSelected(event: CustomEvent, selectedModelIdx: number) {
 		const { value, item, model } = event.detail || {};
@@ -81,8 +81,6 @@
 			selectedModels = _selectedModels;
 		}
 	}
-
-
 </script>
 
 <div class="flex flex-col w-full items-start">
@@ -107,34 +105,10 @@
 
 			{#if $user?.role === 'admin' || ($user?.permissions?.chat?.multiple_models ?? true)}
 				{#if selectedModelIdx === 0}
-					<div
-						class="  self-center mx-1 disabled:text-gray-600 disabled:hover:text-gray-600 -translate-y-[0.5px]"
-					>
-						<Tooltip content={$i18n.t('Add Model')}>
-							<button
-								class=" "
-								{disabled}
-								on:click={() => {
-									selectedModels = [...selectedModels, ''];
-								}}
-								aria-label="Add Model"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke-width="2"
-									stroke="currentColor"
-									class="size-3.5"
-								>
-									<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6" />
-								</svg>
-							</button>
-						</Tooltip>
-					</div>
+					<!-- 已临时禁用 Add Model 入口 -->
 				{:else}
 					<div
-						class="  self-center mx-1 disabled:text-gray-600 disabled:hover:text-gray-600 -translate-y-[0.5px]"
+						class="self-center mx-1 disabled:text-gray-600 disabled:hover:text-gray-600 -translate-y-[0.5px]"
 					>
 						<Tooltip content={$i18n.t('Remove Model')}>
 							<button

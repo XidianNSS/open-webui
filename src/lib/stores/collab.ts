@@ -32,6 +32,8 @@ export interface CollabState {
 		cutLayer: number;
 		strategy: string;
 		totalLayers: number;
+		edgePercent: number;
+		cloudPercent: number;
 	};
 
 	network: {
@@ -42,6 +44,49 @@ export interface CollabState {
 
 	error: string | null;
 }
+
+const clamp = (value: number, min: number, max: number) => {
+	return Math.min(Math.max(value, min), max);
+};
+
+const normalizeSplitPercents = ({
+	edgePercent,
+	cloudPercent,
+	cutLayer,
+	totalLayers
+}: {
+	edgePercent?: number;
+	cloudPercent?: number;
+	cutLayer: number;
+	totalLayers: number;
+}) => {
+	const safeTotalLayers = Math.max(totalLayers, 1);
+	const fallbackEdgePercent = Math.round((clamp(cutLayer, 0, safeTotalLayers) / safeTotalLayers) * 100);
+
+	let resolvedEdgePercent =
+		typeof edgePercent === 'number'
+			? edgePercent
+			: typeof cloudPercent === 'number'
+				? 100 - cloudPercent
+				: fallbackEdgePercent;
+
+	resolvedEdgePercent = clamp(Math.round(resolvedEdgePercent), 0, 100);
+
+	let resolvedCloudPercent =
+		typeof cloudPercent === 'number' ? cloudPercent : 100 - resolvedEdgePercent;
+
+	resolvedCloudPercent = clamp(Math.round(resolvedCloudPercent), 0, 100);
+
+	// 保证最终和为 100，避免显示条出现缝隙或溢出
+	if (resolvedEdgePercent + resolvedCloudPercent !== 100) {
+		resolvedCloudPercent = 100 - resolvedEdgePercent;
+	}
+
+	return {
+		edgePercent: resolvedEdgePercent,
+		cloudPercent: resolvedCloudPercent
+	};
+};
 
 const initialState: CollabState = {
 	enabled: false,
@@ -68,7 +113,9 @@ const initialState: CollabState = {
 	split: {
 		cutLayer: 16,
 		strategy: '低时延优先',
-		totalLayers: 32
+		totalLayers: 32,
+		edgePercent: 50,
+		cloudPercent: 50
 	},
 	network: {
 		rttMs: 0,
@@ -108,11 +155,20 @@ export const startMockCollabPreparation = (payload?: {
 	cutLayer?: number;
 	totalLayers?: number;
 	strategy?: string;
+	edgePercent?: number;
+	cloudPercent?: number;
 }) => {
 	clearTimers();
 
-	const totalLayers = payload?.totalLayers ?? 32;
-	const cutLayer = payload?.cutLayer ?? 16;
+	const totalLayers = Math.max(payload?.totalLayers ?? 32, 1);
+	const cutLayer = clamp(Math.round(payload?.cutLayer ?? 16), 0, totalLayers);
+
+	const { edgePercent, cloudPercent } = normalizeSplitPercents({
+		edgePercent: payload?.edgePercent,
+		cloudPercent: payload?.cloudPercent,
+		cutLayer,
+		totalLayers
+	});
 
 	collabState.set({
 		enabled: true,
@@ -139,7 +195,9 @@ export const startMockCollabPreparation = (payload?: {
 		split: {
 			cutLayer,
 			strategy: payload?.strategy ?? '低时延优先',
-			totalLayers
+			totalLayers,
+			edgePercent,
+			cloudPercent
 		},
 		network: {
 			rttMs: 0,
