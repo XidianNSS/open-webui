@@ -41,11 +41,8 @@
 	import { WEBUI_API_BASE_URL } from '$lib/constants';
 
 	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
-	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
-	import {
-		startMockCollabPreparation,
-		resetCollabState
-	} from '$lib/stores/collab';
+
+	import { resetCollabState } from '$lib/stores/collab';
 
 	const i18n = getContext('i18n');
 
@@ -68,31 +65,28 @@
 	let showDownloadChatModal = false;
 
 	const isEdgeCloudModel = (model: any) => {
+		const modelId = model?.id ?? '';
+
 		return Boolean(
 			model?.info?.meta?.collab_enabled ||
 			(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name)) ||
-			/deepseek|edge-cloud/i.test(model?.id ?? '')
+			/deepseek|edge-cloud|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b/i.test(modelId)
 		);
 	};
+const SUPPORTED_MODELS = new Set(['gpt2', 'tinyllama', 'llama-3.2-3b']);
 
-	const handleModelSelected = (event: CustomEvent) => {
-		const { model } = event.detail;
+const handleModelSelected = (event: CustomEvent) => {
+	const { model } = event.detail ?? {};
+	const modelId = model?.id ?? '';
 
-		if (isEdgeCloudModel(model)) {
-			startMockCollabPreparation({
-				edgeModel: 'Qwen-7B',
-				cloudModel: model?.name ?? model?.id ?? 'DeepSeek-R1',
-				edgeDevice: 'Edge-A',
-				cloudDevice: 'Cloud-B',
-				cutLayer: 16,
-				totalLayers: 32,
-				strategy: '低时延优先'
-			});
-		} else {
-			resetCollabState();
-		}
-	};
+	// 忽略选择器中间态
+	if (!modelId) return;
 
+	// 只有明确切到非协同模型时才清空
+	if (!isEdgeCloudModel(model)) {
+		resetCollabState();
+	}
+};
 
 </script>
 
@@ -372,5 +366,5 @@
 		{/if}
 	</div>
 
-<!--	<CollabTopRibbon />-->
+
 </nav>

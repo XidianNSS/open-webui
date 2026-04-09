@@ -2,7 +2,6 @@
 	import { fade } from 'svelte/transition';
 	import { collabState, setCollabRibbonExpanded } from '$lib/stores/collab';
 	import Collaboration from './Collaboration.svelte';
-
 	const clamp = (value: number, min: number, max: number) => {
 		return Math.min(Math.max(value, min), max);
 	};
@@ -133,13 +132,13 @@
 
 						<div class="mt-3 h-2.5 overflow-hidden rounded-full bg-[#EAF0F6] dark:bg-white/8">
 							<div
-								class="h-full rounded-full transition-all duration-500"
+								class="h-full rounded-full transition-all duration-300"
 								style={`width:${$collabState.edge.progress}%;background:linear-gradient(90deg,#39B5FF 0%,#A9E6DA 100%);`}
 							></div>
 						</div>
 
 						<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-							状态: {$collabState.edge.status}
+							状态: {$collabState.message}
 						</div>
 					</div>
 
@@ -176,13 +175,13 @@
 
 						<div class="mt-3 h-2.5 overflow-hidden rounded-full bg-[#FFF0D9] dark:bg-white/8">
 							<div
-								class="h-full rounded-full transition-all duration-500"
+								class="h-full rounded-full transition-all duration-300"
 								style={`width:${$collabState.cloud.progress}%;background:linear-gradient(90deg,#FF9F31 0%,#FFD97A 100%);`}
 							></div>
 						</div>
 
 						<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-							状态: {$collabState.cloud.status}
+							状态: {$collabState.message}
 						</div>
 					</div>
 				</div>

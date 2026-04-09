@@ -880,8 +880,8 @@ if frontend_loader.exists():
 ####################################
 # CUSTOM_NAME (Legacy)
 ####################################
-
-CUSTOM_NAME = os.environ.get('CUSTOM_NAME', '')
+CUSTOM_NAME = ''
+# CUSTOM_NAME = os.environ.get('CUSTOM_NAME', '')
 
 if CUSTOM_NAME:
     try:
