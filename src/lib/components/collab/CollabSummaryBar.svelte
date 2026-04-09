@@ -7,7 +7,9 @@
 	$: totalLayers = $collabState.split?.totalLayers ?? 32;
 	$: splitPoint = totalLayers ? `L${currentLayer}` : '--';
 	$: networkStatus = $collabState.network?.status ?? '稳定';
-	$: ready = $collabState.phase === 'completed' || $collabState.overallProgress >= 100;
+	// 接口适配性设计
+	// $: ready = $collabState.phase === 'completed' || $collabState.overallProgress >= 100;
+	$: ready = $collabState.phase === 'ready' || $collabState.overallProgress >= 100;
 </script>
 
 {#if $collabState.enabled}

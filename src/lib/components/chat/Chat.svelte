@@ -108,13 +108,17 @@
 	import Sidebar from '../icons/Sidebar.svelte';
 	import Image from '../common/Image.svelte';
 	import { getBanners } from '$lib/apis/configs';
-	import CollabBadge from '$lib/components/collab/CollabBadge.svelte';
 	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
+
 	import {
 		collabState,
-		resetCollabState,
-		startMockCollabPreparation
-	} from '$lib/stores/collab';
+		hasStoredCloudToken,
+		loginToCloud,
+		startRealCollabPreparation,
+		resetCollabState
+} from '$lib/stores/collab';
+
+
 	export let chatIdProp = '';
 
 	let loading = true;
@@ -183,40 +187,142 @@
 		navigateHandler();
 	}
 
+
 	const isEdgeCloudModelId = (modelId: string = '') => {
-		return /deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)/i.test(modelId);
-	};
+	const model = $models.find((m) => m.id === modelId);
 
-	const syncPageCollabState = (modelIds: string[] = [], enabled = false) => {
-		if (typeof window === 'undefined') {
-			return;
+	return Boolean(
+		model?.info?.meta?.collab_enabled ||
+			/deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b/i.test(
+				modelId
+			)
+	);
+};
+
+const resolveBackendModelType = (
+	modelId: string = ''
+): 'gpt2' | 'tinyllama' | 'llama-3.2-3b' | null => {
+	const normalized = modelId.toLowerCase();
+
+	if (/\bgpt2\b/.test(normalized)) return 'gpt2';
+	if (/tinyllama/.test(normalized)) return 'tinyllama';
+	if (/llama[\s._:-]*3\.?2[\s._:-]*3b/.test(normalized)) return 'llama-3.2-3b';
+
+	return null;
+};
+
+let collabPreparedModelId = '';
+
+let collabSelectionTriggering = false;
+
+$: {
+	const primaryModelId =
+		atSelectedModel?.id ??
+		selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+		'';
+
+	// 注意：不要因为选择器短暂给了空值，就立刻 reset
+	// 否则“重新点击同一个协同模型”时，状态会被清掉
+	if (!primaryModelId) {
+		// 忽略 transient empty state
+	} else if (!isEdgeCloudModelId(primaryModelId) && $collabState.enabled) {
+		resetCollabState();
+		collabPreparedModelId = '';
+	} else if (
+		collabPreparedModelId &&
+		primaryModelId !== collabPreparedModelId &&
+		$collabState.enabled
+	) {
+		resetCollabState();
+		collabPreparedModelId = '';
+	}
+}
+
+const triggerCollabOnModelSelect = async () => {
+	const primaryModelId =
+		atSelectedModel?.id ??
+		selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+		'';
+
+	if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
+		return;
+	}
+
+	if (collabSelectionTriggering) {
+		return;
+	}
+
+	// 已经是这个模型，而且已加载完成/已准备，就不要重复触发
+	if (
+		$collabState.enabled &&
+		$collabState.backendStatus !== 'failed' &&
+		collabPreparedModelId === primaryModelId
+	) {
+		return;
+	}
+
+	try {
+		collabSelectionTriggering = true;
+		await ensureCollabReadyForSelectedModel();
+	} finally {
+		collabSelectionTriggering = false;
+	}
+};
+const ensureCollabReadyForSelectedModel = async () => {
+
+	const primaryModelId =
+		atSelectedModel?.id ??
+		selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+		'';
+
+	if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
+		return true;
+	}
+
+	// 当前模型已经准备过，并且不是失败态，就不重复触发
+	if (
+		$collabState.enabled &&
+		$collabState.backendStatus !== 'failed' &&
+		collabPreparedModelId === primaryModelId
+	) {
+		return true;
+	}
+
+	const backendModelType = resolveBackendModelType(primaryModelId);
+
+	if (!backendModelType) {
+		toast.error(`当前边云调度后端暂不支持模型 ${primaryModelId}`);
+		return false;
+	}
+
+	try {
+		if (!hasStoredCloudToken()) {
+			await loginToCloud();
 		}
 
-		const primaryModelId = modelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0);
+		const selectedModel = $models.find((m) => m.id === primaryModelId);
 
-		if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
-			if (enabled) {
-				resetCollabState();
-			}
-			return;
-		}
-
-		if (enabled) {
-			return;
-		}
-
-		startMockCollabPreparation({
-			edgeModel: primaryModelId,
-			cloudModel: primaryModelId,
+		await startRealCollabPreparation(backendModelType, {
+			edgeModel: 'Qwen-7B',
+			cloudModel: selectedModel?.name ?? selectedModel?.id ?? primaryModelId,
 			edgeDevice: 'Edge-A',
 			cloudDevice: 'Cloud-B',
 			cutLayer: 16,
 			totalLayers: 32,
-			strategy: '低时延优先'
+			strategy: '待计算'
 		});
-	};
 
-	$: syncPageCollabState(selectedModels, $collabState.enabled);
+		collabPreparedModelId = primaryModelId;
+		toast.success('协同任务已提交，正在获取加载进度');
+		return true;
+	} catch (err) {
+		const message = err instanceof Error ? err.message : '协同任务启动失败';
+		toast.error(message);
+		resetCollabState();
+		collabPreparedModelId = '';
+		return false;
+	}
+};
 
 	const navigateHandler = async () => {
 		loading = true;
@@ -304,14 +410,37 @@
 		console.log('saveSessionSelectedModels', selectedModels, sessionStorage.selectedModels);
 	};
 
-	let oldSelectedModelIds = [''];
-	$: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
-		onSelectedModelIdsChange();
-	}
+let oldSelectedModelIds = [''];
 
-	const onSelectedModelIdsChange = () => {
+$: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
+	void onSelectedModelIdsChange();
+}
+
+	const onSelectedModelIdsChange = async () => {
+		const previousModelId =
+			oldSelectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ?? '';
+		const nextModelId =
+			selectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ?? '';
+
 		resetInput();
 		oldSelectedModelIds = structuredClone(selectedModelIds);
+
+		// 选择器打开/重选时可能会短暂变空，这里直接忽略
+		if (!nextModelId) {
+			return;
+		}
+
+		// 如果还是同一个协同模型，并且当前已经准备好了，就不要重置，也不要重触发
+		if (
+			nextModelId === previousModelId &&
+			nextModelId === collabPreparedModelId &&
+			$collabState.enabled
+		) {
+			return;
+		}
+
+		await tick();
+		await triggerCollabOnModelSelect();
 	};
 
 	const resetInput = () => {
@@ -827,7 +956,7 @@
 			name: fileData.name,
 			url: fileData.url,
 			headers: {
-				Authorization: `Bearer ${token}`
+				Authorization: `Bearer ${localStorage.token}`
 			}
 		});
 
@@ -1187,6 +1316,9 @@
 		autoScroll = true;
 
 		resetInput();
+		resetCollabState();
+		collabPreparedModelId = '';
+
 		await chatId.set('');
 		await chatTitle.set('');
 
@@ -1265,9 +1397,14 @@
 
 		const chatInput = document.getElementById('chat-input');
 		setTimeout(() => chatInput?.focus(), 0);
+		await tick();
+		void triggerCollabOnModelSelect();
 	};
 
 	const loadChat = async () => {
+		resetCollabState();
+		collabPreparedModelId = '';
+
 		chatId.set(chatIdProp);
 
 		if ($temporaryChatEnabled) {
@@ -1311,6 +1448,7 @@
 				chatFiles = chatContent?.files ?? [];
 
 				autoScroll = true;
+				void triggerCollabOnModelSelect();
 				await tick();
 
 				if (history.currentId) {
@@ -1876,14 +2014,18 @@
 			const currentMessage = history.messages[history.currentId];
 
 			if (currentMessage.error && !currentMessage.content) {
-				// Error in response
 				toast.error($i18n.t(`Oops! There was an error in the previous response.`));
 				return;
 			}
 		}
 
-		messageInput?.setText('');
-		prompt = '';
+		const collabReady = await ensureCollabReadyForSelectedModel();
+		if (!collabReady) {
+			return;
+		}
+
+messageInput?.setText('');
+prompt = '';
 
 		const messages = createMessagesList(history, history.currentId);
 		const _files = structuredClone(files);
@@ -2974,9 +3116,14 @@
 							</div>
 						{:else}
 								<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
-									<div class="w-full max-w-[960px] pt-2">
-										<CollabTopRibbon />
-									</div>
+<!--									<div class="w-full max-w-[960px] pt-2">-->
+<!--										<CollabTopRibbon />-->
+<!--									</div>-->
+									{#if $collabState.enabled && $collabState.ribbonExpanded}
+										<div class="w-full max-w-[960px] pt-2">
+											<CollabTopRibbon />
+										</div>
+									{/if}
 
 								<Placeholder
 									{history}
