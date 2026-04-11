@@ -188,27 +188,17 @@
 	}
 
 
-	const isEdgeCloudModelId = (modelId: string = '') => {
+
+const isEdgeCloudModelId = (modelId: string = '') => {
+	if (!modelId) return false;
+
 	const model = $models.find((m) => m.id === modelId);
 
-	return Boolean(
-		model?.info?.meta?.collab_enabled ||
-			/deepseek|edge-cloud|qwen\s*3[:\s-]?(4b|8b)|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b/i.test(
-				modelId
-			)
-	);
+	return Boolean(model?.info?.meta?.collab_enabled ?? true);
 };
 
-const resolveBackendModelType = (
-	modelId: string = ''
-): 'gpt2' | 'tinyllama' | 'llama-3.2-3b' | null => {
-	const normalized = modelId.toLowerCase();
-
-	if (/\bgpt2\b/.test(normalized)) return 'gpt2';
-	if (/tinyllama/.test(normalized)) return 'tinyllama';
-	if (/llama[\s._:-]*3\.?2[\s._:-]*3b/.test(normalized)) return 'llama-3.2-3b';
-
-	return null;
+const resolveBackendModelType = (modelId: string = ''): string | null => {
+	return modelId || null;
 };
 
 let collabPreparedModelId = '';
@@ -289,11 +279,6 @@ const ensureCollabReadyForSelectedModel = async () => {
 	}
 
 	const backendModelType = resolveBackendModelType(primaryModelId);
-
-	if (!backendModelType) {
-		toast.error(`当前边云调度后端暂不支持模型 ${primaryModelId}`);
-		return false;
-	}
 
 	try {
 		if (!hasStoredCloudToken()) {
