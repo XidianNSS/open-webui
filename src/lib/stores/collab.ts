@@ -413,7 +413,7 @@ const mockLoginToCloud = async () => {
 };
 
 const mockTriggerScheduleTask = async (
-	modelType: 'gpt2' | 'tinyllama' | 'llama-3.2-3b'
+	modelType: string
 ): Promise<BackendTask> => {
 	await wait(300);
 
@@ -583,7 +583,7 @@ export const loginToCloud = async () => {
 };
 
 export const triggerScheduleTask = async (
-	modelType: 'gpt2' | 'tinyllama' | 'llama-3.2-3b'
+	modelType: string
 ): Promise<BackendTask> => {
 	if (USE_MOCK_CLOUD_API) {
 		return mockTriggerScheduleTask(modelType);
@@ -677,7 +677,7 @@ export const startTaskPolling = (taskId: string) => {
 
 // 流程入口，清理旧定时器和轮询，根据传入的payload计算层数等。
 export const startRealCollabPreparation = async (
-	modelType: 'gpt2' | 'tinyllama' | 'llama-3.2-3b',
+	modelType: string,
 	payload?: {
 		edgeModel?: string;
 		cloudModel?: string;
@@ -703,10 +703,7 @@ export const startRealCollabPreparation = async (
 		totalLayers
 	});
 
-	const task = await triggerScheduleTask(modelType, {
-		edgeDevice: payload?.edgeDevice ?? 'cuda',
-		edgeStorageLimitGb: payload?.edgeStorageLimitGb ?? 16.0
-	});
+	const task = await triggerScheduleTask(modelType);
 
 	collabState.update((s) => ({
 		...s,
