@@ -1,20 +1,33 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { fade } from 'svelte/transition';
 	import { collabState, setCollabRibbonExpanded } from '$lib/stores/collab';
 	import Collaboration from './Collaboration.svelte';
+
 	const clamp = (value: number, min: number, max: number) => {
 		return Math.min(Math.max(value, min), max);
 	};
 
-	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
+	const getCollabDetailPath = () => {
+		if ($page.url.pathname.startsWith('/collab')) {
+			return '/collab';
+		}
 
-	// 兼容旧数据：如果没有百分比字段，则根据 layer 兜底换算
+		const returnTo = `${$page.url.pathname}${$page.url.search}`;
+		return `/collab?returnTo=${encodeURIComponent(returnTo)}`;
+	};
+
+	const openDetailPage = async () => {
+		await goto(getCollabDetailPath());
+	};
+
+	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
 	$: edgeLayerCount = Math.max(
 		($collabState.edge.endLayer ?? 0) - ($collabState.edge.startLayer ?? 0) + 1,
 		0
 	);
 	$: fallbackEdgePercent = clamp(Math.round((edgeLayerCount / totalLayers) * 100), 0, 100);
-
 	$: edgePercent = clamp(
 		Math.round($collabState.split?.edgePercent ?? fallbackEdgePercent),
 		0,
@@ -25,20 +38,15 @@
 		0,
 		100
 	);
-
-	// 保证长条宽度始终可用
 	$: totalPercent = Math.max(edgePercent + cloudPercent, 1);
 	$: edgeWidth = (edgePercent / totalPercent) * 100;
 	$: cloudWidth = (cloudPercent / totalPercent) * 100;
-
 	$: overallProgress = Math.max(
 		$collabState.overallProgress ?? Math.max($collabState.edge.progress, $collabState.cloud.progress),
 		0
 	);
-
 	$: edgeDeviceLabel = $collabState.edge.device || $collabState.edge.name || 'Edge-A';
 	$: cloudDeviceLabel = $collabState.cloud.device || $collabState.cloud.name || 'Cloud-B';
-
 	$: overallStatusLabel = overallProgress >= 100 ? '已就绪' : '准备中';
 	$: networkStatusLabel =
 		$collabState.network.status === 'connected'
@@ -199,7 +207,7 @@
 							</div>
 						</div>
 
-						<div class="flex flex-wrap gap-2">
+						<div class="flex flex-wrap items-center gap-2">
 							<div
 								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
 							>
@@ -225,11 +233,20 @@
 							>
 								链路 {networkStatusLabel}
 							</div>
+							<button
+								type="button"
+								class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[12px] font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-300"
+								on:click={openDetailPage}
+							>
+								展开详情
+							</button>
 						</div>
 					</div>
 
-					<div
-						class="mt-4 rounded-[16px] border border-[#ECF1F6] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/8 dark:bg-[#0B1118]"
+					<button
+						type="button"
+						class="mt-4 block w-full rounded-[16px] border border-[#ECF1F6] bg-white p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] transition hover:border-sky-200 hover:shadow-[0_10px_30px_rgba(56,189,248,0.12)] dark:border-white/8 dark:bg-[#0B1118] dark:hover:border-sky-400/20"
+						on:click={openDetailPage}
 					>
 						<div class="relative overflow-hidden rounded-2xl bg-[#EAF0F6] shadow-sm dark:bg-white/8">
 							<div
@@ -281,8 +298,12 @@
 								<span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400"></span>
 								<span>云端承担 {cloudPercent}% 推理负载</span>
 							</div>
+
+							<div class="font-medium text-sky-600 dark:text-sky-300">
+								点击查看逐层切分详情
+							</div>
 						</div>
-					</div>
+					</button>
 				</div>
 			</div>
 		</section>

@@ -11,6 +11,13 @@ export type CollabPhase =
 
 export type BackendTaskStatus = 'idle' | 'accepted' | 'running' | 'completed' | 'failed';
 export type BackendTaskPhase = 'idle' | 'strategy' | 'loading' | 'completed';
+export type CollabModelType =
+	| 'gpt2'
+	| 'tinyllama'
+	| 'llama-3.2-3b'
+	| 'qwen3-8b'
+	| 'qwen3-4b'
+	| (string & {});
 
 // 描述后端返回的数据格式
 export interface BackendTask {
@@ -42,8 +49,10 @@ export interface CollabState {
 	enabled: boolean;
 	mode: 'single' | 'edge_cloud';
 	ribbonExpanded: boolean;
+	detailPanelExpanded: boolean;
 	phase: CollabPhase;
 	overallProgress: number;
+	preparedModelId: string | null;
 
 	token: string | null;
 	taskId: string | null;
@@ -75,6 +84,11 @@ export interface CollabState {
 }
 
 type MockFailStage = 'none' | 'login' | 'trigger' | 'strategy' | 'loading';
+
+interface ScheduleTriggerOptions {
+	edgeDevice?: string;
+	edgeStorageLimitGb?: number;
+}
 
 const isBrowser = typeof window !== 'undefined';
 
@@ -201,8 +215,10 @@ const initialState: CollabState = {
 	enabled: false,
 	mode: 'single',
 	ribbonExpanded: false,
+	detailPanelExpanded: false,
 	phase: 'idle',
 	overallProgress: 0,
+	preparedModelId: null,
 
 	token: getCloudToken(),
 	taskId: null,
@@ -267,6 +283,14 @@ export const setCollabRibbonExpanded = (expanded: boolean) => {
 
 export const toggleCollabRibbon = () => {
 	collabState.update((s) => ({ ...s, ribbonExpanded: !s.ribbonExpanded }));
+};
+
+export const setCollabDetailPanelExpanded = (expanded: boolean) => {
+	collabState.update((s) => ({ ...s, detailPanelExpanded: expanded }));
+};
+
+export const toggleCollabDetailPanel = () => {
+	collabState.update((s) => ({ ...s, detailPanelExpanded: !s.detailPanelExpanded }));
 };
 
 export const clearCloudToken = () => {
@@ -386,7 +410,7 @@ const mockTaskStore = new Map<
 	{
 		startAt: number;
 		failAt: MockFailStage;
-		modelType: string;
+		modelType: CollabModelType;
 	}
 >();
 
@@ -413,7 +437,8 @@ const mockLoginToCloud = async () => {
 };
 
 const mockTriggerScheduleTask = async (
-	modelType: string
+	modelType: CollabModelType,
+	_options?: ScheduleTriggerOptions
 ): Promise<BackendTask> => {
 	await wait(300);
 
@@ -583,10 +608,11 @@ export const loginToCloud = async () => {
 };
 
 export const triggerScheduleTask = async (
-	modelType: string
+	modelType: CollabModelType,
+	options?: ScheduleTriggerOptions
 ): Promise<BackendTask> => {
 	if (USE_MOCK_CLOUD_API) {
-		return mockTriggerScheduleTask(modelType);
+		return mockTriggerScheduleTask(modelType, options);
 	}
 
 	const res = await fetch(`${API_BASE}/schedule/trigger`, {
@@ -596,7 +622,11 @@ export const triggerScheduleTask = async (
 			...getAuthorizedHeaders()
 		},
 		body: JSON.stringify({
-			model_type: modelType
+			model_type: modelType,
+			...(options?.edgeDevice ? { edge_device: options.edgeDevice } : {}),
+			...(typeof options?.edgeStorageLimitGb === 'number'
+				? { edge_storage_limit_gb: options.edgeStorageLimitGb }
+				: {})
 		})
 	});
 
@@ -677,8 +707,9 @@ export const startTaskPolling = (taskId: string) => {
 
 // 流程入口，清理旧定时器和轮询，根据传入的payload计算层数等。
 export const startRealCollabPreparation = async (
-	modelType: string,
+	modelType: CollabModelType,
 	payload?: {
+		sourceModelId?: string;
 		edgeModel?: string;
 		cloudModel?: string;
 		edgeDevice?: string;
@@ -703,7 +734,10 @@ export const startRealCollabPreparation = async (
 		totalLayers
 	});
 
-	const task = await triggerScheduleTask(modelType);
+	const task = await triggerScheduleTask(modelType, {
+		edgeDevice: payload?.edgeDevice ?? 'cuda',
+		edgeStorageLimitGb: payload?.edgeStorageLimitGb ?? 16.0
+	});
 
 	collabState.update((s) => ({
 		...s,
@@ -712,6 +746,7 @@ export const startRealCollabPreparation = async (
 		ribbonExpanded: true,
 		phase: 'planning',
 		overallProgress: 0,
+		preparedModelId: payload?.sourceModelId ?? s.preparedModelId,
 		taskId: task.task_id,
 		backendStatus: task.status,
 		backendPhase: task.phase,
@@ -762,6 +797,7 @@ export const startRealCollabPreparation = async (
    ========================= */
 
 export const startMockCollabPreparation = (payload?: {
+	sourceModelId?: string;
 	edgeModel?: string;
 	cloudModel?: string;
 	edgeDevice?: string;
@@ -794,6 +830,7 @@ export const startMockCollabPreparation = (payload?: {
 		ribbonExpanded: true,
 		phase: 'planning',
 		overallProgress: 8,
+		preparedModelId: payload?.sourceModelId ?? null,
 		token: getCloudToken(),
 		taskId: null,
 		backendStatus: 'running',

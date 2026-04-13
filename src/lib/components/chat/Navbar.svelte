@@ -70,10 +70,11 @@
 		return Boolean(
 			model?.info?.meta?.collab_enabled ||
 			(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name)) ||
-			/deepseek|edge-cloud|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b/i.test(modelId)
+			/deepseek|edge-cloud|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b|qwen3[\s._:-]*(4|8)b/i.test(
+				modelId
+			)
 		);
 	};
-const SUPPORTED_MODELS = new Set(['gpt2', 'tinyllama', 'llama-3.2-3b']);
 
 const handleModelSelected = (event: CustomEvent) => {
 	const { model } = event.detail ?? {};
