@@ -15,8 +15,6 @@ export type CollabModelType =
 	| 'gpt2'
 	| 'tinyllama'
 	| 'llama-3.2-3b'
-	| 'qwen3-8b'
-	| 'qwen3-4b'
 	| (string & {});
 
 // 描述后端返回的数据格式

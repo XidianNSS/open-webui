@@ -219,36 +219,6 @@ const resolveCollabProfile = (modelId: string = ''): CollabModelProfile | null =
 
 	const normalized = modelId.toLowerCase();
 
-	if (/\bqwen3\b/.test(normalized) && /(?:^|[\s._:-])8b\b/.test(normalized)) {
-		return {
-			modelType: 'qwen3-8b',
-			edgeModel: 'Qwen3-8B',
-			edgeDevice: 'Edge-A',
-			cloudDevice: 'Cloud-B',
-			cutLayer: 18,
-			totalLayers: 36,
-			strategy: '低时延优先',
-			edgePercent: 50,
-			cloudPercent: 50,
-			edgeStorageLimitGb: 12
-		};
-	}
-
-	if (/\bqwen3\b/.test(normalized) && /(?:^|[\s._:-])4b\b/.test(normalized)) {
-		return {
-			modelType: 'qwen3-4b',
-			edgeModel: 'Qwen3-4B',
-			edgeDevice: 'Edge-A',
-			cloudDevice: 'Cloud-B',
-			cutLayer: 18,
-			totalLayers: 36,
-			strategy: '轻量切分',
-			edgePercent: 50,
-			cloudPercent: 50,
-			edgeStorageLimitGb: 8
-		};
-	}
-
 	if (/\bgpt2\b/.test(normalized)) return createDefaultCollabProfile('gpt2', 'GPT-2');
 	if (/tinyllama/.test(normalized)) {
 		return createDefaultCollabProfile('tinyllama', 'TinyLlama');
