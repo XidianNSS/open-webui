@@ -4028,3 +4028,4 @@ LDAP_ATTRIBUTE_FOR_GROUPS = PersistentConfig(
     'ldap.server.attribute_for_groups',
     os.environ.get('LDAP_ATTRIBUTE_FOR_GROUPS', 'memberOf'),
 )
+
