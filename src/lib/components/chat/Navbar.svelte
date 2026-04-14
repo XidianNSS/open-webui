@@ -73,7 +73,6 @@
 			/deepseek|edge-cloud|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b/i.test(modelId)
 		);
 	};
-const SUPPORTED_MODELS = new Set(['gpt2', 'tinyllama', 'llama-3.2-3b']);
 
 const handleModelSelected = (event: CustomEvent) => {
 	const { model } = event.detail ?? {};
