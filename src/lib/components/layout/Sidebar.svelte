@@ -3,6 +3,7 @@
 	import { v4 as uuidv4 } from 'uuid';
 
 	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import {
 		user,
 		chats,
@@ -68,7 +69,7 @@
 	import { slide } from 'svelte/transition';
 	import HotkeyHint from '../common/HotkeyHint.svelte';
 
-	import { collabState, resetCollabState, setCollabRibbonExpanded } from '$lib/stores/collab';
+	import { collabState, resetCollabState } from '$lib/stores/collab';
 
 	const BREAKPOINT = 768;
 
@@ -590,13 +591,23 @@
 
 	const isWindows = /Windows/i.test(navigator.userAgent);
 
+	$: collabRouteActive = $page.url.pathname.startsWith('/collab');
 	$: collabShortcutTooltip = !$collabState.enabled
 		? '边云协同（选择协同模型后可用）'
-		: $collabState.ribbonExpanded
-			? '收起边云协同面板'
-			: '打开边云协同面板';
+		: collabRouteActive
+			? '当前正在查看边云协同详情'
+			: '打开边云协同详情页';
 
-	const toggleCollabPanel = async (event?: Event) => {
+	const getCollabDetailPath = () => {
+		if ($page.url.pathname.startsWith('/collab')) {
+			return '/collab';
+		}
+
+		const returnTo = `${$page.url.pathname}${$page.url.search}`;
+		return `/collab?returnTo=${encodeURIComponent(returnTo)}`;
+	};
+
+	const openCollabPage = async (event?: Event) => {
 		event?.stopImmediatePropagation();
 		event?.preventDefault();
 
@@ -605,10 +616,9 @@
 			return;
 		}
 
-		const nextExpanded = !$collabState.ribbonExpanded;
-		setCollabRibbonExpanded(nextExpanded);
+		await goto(getCollabDetailPath());
 
-		if ($mobile && nextExpanded) {
+		if ($mobile) {
 			showSidebar.set(false);
 		}
 	};
@@ -687,7 +697,6 @@
 		}}
 	/>
 {/if}
-
 <SearchModal
 	bind:show={$showSearch}
 	onClose={() => {
@@ -797,12 +806,12 @@
 				<div>
 					<Tooltip content={collabShortcutTooltip} placement="right">
 						<button
-							class="cursor-pointer flex rounded-xl transition group relative {$collabState.enabled
-								? $collabState.ribbonExpanded
-									? 'bg-emerald-100/80 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.18)]'
-									: 'hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-200'
-								: 'text-gray-400 dark:text-gray-600 hover:bg-gray-100/70 dark:hover:bg-gray-850/70'}"
-							on:click={toggleCollabPanel}
+								class="cursor-pointer flex rounded-xl transition group relative {$collabState.enabled
+									? collabRouteActive
+										? 'bg-emerald-100/80 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.18)]'
+										: 'hover:bg-gray-100 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-200'
+									: 'text-gray-400 dark:text-gray-600 hover:bg-gray-100/70 dark:hover:bg-gray-850/70'}"
+								on:click={openCollabPage}
 							draggable="false"
 							aria-label={collabShortcutTooltip}
 						>
@@ -811,7 +820,7 @@
 
 								{#if $collabState.enabled}
 									<span
-										class="absolute right-2 top-2 size-1.5 rounded-full {$collabState.ribbonExpanded
+										class="absolute right-2 top-2 size-1.5 rounded-full {collabRouteActive
 											? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]'
 											: 'bg-sky-400'}"
 									></span>
@@ -1058,12 +1067,12 @@
 					<div class="px-[0.4375rem] flex justify-center">
 						<button
 							id="sidebar-collab-button"
-							class="group grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 transition outline-none {$collabState.enabled
-								? $collabState.ribbonExpanded
-									? 'bg-emerald-50 text-emerald-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.14)] dark:bg-emerald-400/10 dark:text-emerald-300'
-									: 'text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900'
-								: 'text-gray-400 dark:text-gray-500 hover:bg-gray-100/70 dark:hover:bg-gray-900/70'}"
-							on:click={toggleCollabPanel}
+								class="group grow flex items-center space-x-3 rounded-2xl px-2.5 py-2 transition outline-none {$collabState.enabled
+									? collabRouteActive
+										? 'bg-emerald-50 text-emerald-700 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.14)] dark:bg-emerald-400/10 dark:text-emerald-300'
+										: 'text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-900'
+									: 'text-gray-400 dark:text-gray-500 hover:bg-gray-100/70 dark:hover:bg-gray-900/70'}"
+								on:click={openCollabPage}
 							draggable="false"
 							aria-label={collabShortcutTooltip}
 						>
@@ -1072,7 +1081,7 @@
 
 								{#if $collabState.enabled}
 									<span
-										class="absolute -right-1 -top-0.5 size-1.5 rounded-full {$collabState.ribbonExpanded
+										class="absolute -right-1 -top-0.5 size-1.5 rounded-full {collabRouteActive
 											? 'bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]'
 											: 'bg-sky-400'}"
 									></span>
@@ -1085,17 +1094,17 @@
 
 							<div
 								class="self-center rounded-full px-2 py-0.5 text-[11px] font-medium {$collabState.enabled
-									? $collabState.ribbonExpanded
+									? collabRouteActive
 										? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300'
 										: 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300'
 									: 'bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-gray-500'}"
 							>
 								{#if !$collabState.enabled}
 									待命
-								{:else if $collabState.ribbonExpanded}
-									展开中
+								{:else if collabRouteActive}
+									查看中
 								{:else}
-									已收起
+									可查看
 								{/if}
 							</div>
 						</button>
