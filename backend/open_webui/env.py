@@ -285,7 +285,8 @@ STATIC_DIR = Path(os.getenv('STATIC_DIR', OPEN_WEBUI_DIR / 'static'))
 
 FONTS_DIR = Path(os.getenv('FONTS_DIR', OPEN_WEBUI_DIR / 'static' / 'fonts'))
 
-FRONTEND_BUILD_DIR = Path(os.getenv('FRONTEND_BUILD_DIR', BASE_DIR / 'build')).resolve()
+
+FRONTEND_BUILD_DIR = Path(os.getenv('FRONTEND_BUILD_DIR', BASE_DIR / 'static')).resolve()
 
 if FROM_INIT_PY:
     FRONTEND_BUILD_DIR = Path(os.getenv('FRONTEND_BUILD_DIR', OPEN_WEBUI_DIR / 'frontend')).resolve()
@@ -522,6 +523,7 @@ WEBUI_AUTH_COOKIE_SECURE = (
 
 if WEBUI_AUTH and WEBUI_SECRET_KEY == '':
     raise ValueError(ERROR_MESSAGES.ENV_VAR_NOT_FOUND)
+
 
 ENABLE_COMPRESSION_MIDDLEWARE = os.environ.get('ENABLE_COMPRESSION_MIDDLEWARE', 'True').lower() == 'true'
 

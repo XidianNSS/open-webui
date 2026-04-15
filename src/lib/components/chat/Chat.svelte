@@ -115,8 +115,7 @@
 		hasStoredCloudToken,
 		loginToCloud,
 		startRealCollabPreparation,
-		resetCollabState,
-		type CollabModelType
+		resetCollabState
 } from '$lib/stores/collab';
 
 
@@ -188,65 +187,21 @@
 		navigateHandler();
 	}
 
-type CollabModelProfile = {
-	modelType: CollabModelType;
-	edgeModel: string;
-	edgeDevice: string;
-	cloudDevice: string;
-	cutLayer: number;
-	totalLayers: number;
-	strategy: string;
-	edgePercent?: number;
-	cloudPercent?: number;
-	edgeStorageLimitGb?: number;
-};
 
-const createDefaultCollabProfile = (
-	modelType: CollabModelType,
-	edgeModel: string
-): CollabModelProfile => ({
-	modelType,
-	edgeModel,
-	edgeDevice: 'Edge-A',
-	cloudDevice: 'Cloud-B',
-	cutLayer: 16,
-	totalLayers: 32,
-	strategy: '待计算'
-});
-
-const resolveCollabProfile = (modelId: string = ''): CollabModelProfile | null => {
-	if (!modelId) return null;
-
-	const normalized = modelId.toLowerCase();
-
-	if (/\bgpt2\b/.test(normalized)) return createDefaultCollabProfile('gpt2', 'GPT-2');
-	if (/tinyllama/.test(normalized)) {
-		return createDefaultCollabProfile('tinyllama', 'TinyLlama');
-	}
-	if (/llama[\s._:-]*3\.?2[\s._:-]*3b/.test(normalized)) {
-		return createDefaultCollabProfile('llama-3.2-3b', 'Llama-3.2-3B');
-	}
-
-	const model = $models.find((m) => m.id === modelId);
-	const hasCollabMetadata =
-		Boolean(model?.info?.meta?.collab_enabled) ||
-		(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name));
-
-	if (hasCollabMetadata) {
-		return createDefaultCollabProfile(modelId, model?.name ?? modelId);
-	}
-
-	return null;
-};
-
-const resolveBackendModelType = (modelId: string = ''): CollabModelType | null =>
-	resolveCollabProfile(modelId)?.modelType ?? null;
 
 const isEdgeCloudModelId = (modelId: string = '') => {
-	return resolveCollabProfile(modelId) !== null;
+	if (!modelId) return false;
+
+	const model = $models.find((m) => m.id === modelId);
+
+	return Boolean(model?.info?.meta?.collab_enabled ?? true);
 };
 
-const getPreparedCollabModelId = () => $collabState.preparedModelId ?? '';
+const resolveBackendModelType = (modelId: string = ''): string | null => {
+	return modelId || null;
+};
+
+let collabPreparedModelId = '';
 
 let collabSelectionTriggering = false;
 
@@ -262,12 +217,14 @@ $: {
 		// 忽略 transient empty state
 	} else if (!isEdgeCloudModelId(primaryModelId) && $collabState.enabled) {
 		resetCollabState();
+		collabPreparedModelId = '';
 	} else if (
-		getPreparedCollabModelId() &&
-		primaryModelId !== getPreparedCollabModelId() &&
+		collabPreparedModelId &&
+		primaryModelId !== collabPreparedModelId &&
 		$collabState.enabled
 	) {
 		resetCollabState();
+		collabPreparedModelId = '';
 	}
 }
 
@@ -289,7 +246,7 @@ const triggerCollabOnModelSelect = async () => {
 	if (
 		$collabState.enabled &&
 		$collabState.backendStatus !== 'failed' &&
-		getPreparedCollabModelId() === primaryModelId
+		collabPreparedModelId === primaryModelId
 	) {
 		return;
 	}
@@ -316,18 +273,13 @@ const ensureCollabReadyForSelectedModel = async () => {
 	if (
 		$collabState.enabled &&
 		$collabState.backendStatus !== 'failed' &&
-		getPreparedCollabModelId() === primaryModelId
+		collabPreparedModelId === primaryModelId
 	) {
 		return true;
 	}
 
-	const collabProfile = resolveCollabProfile(primaryModelId);
 	const backendModelType = resolveBackendModelType(primaryModelId);
 
-	if (!collabProfile || !backendModelType) {
-		toast.error(`当前边云调度后端暂不支持模型 ${primaryModelId}`);
-		return false;
-	}
 	try {
 		if (!hasStoredCloudToken()) {
 			await loginToCloud();
@@ -336,25 +288,23 @@ const ensureCollabReadyForSelectedModel = async () => {
 		const selectedModel = $models.find((m) => m.id === primaryModelId);
 
 		await startRealCollabPreparation(backendModelType, {
-			sourceModelId: primaryModelId,
-			edgeModel: selectedModel?.name ?? collabProfile.edgeModel,
+			edgeModel: 'Qwen-7B',
 			cloudModel: selectedModel?.name ?? selectedModel?.id ?? primaryModelId,
-			edgeDevice: collabProfile.edgeDevice,
-			cloudDevice: collabProfile.cloudDevice,
-			cutLayer: collabProfile.cutLayer,
-			totalLayers: collabProfile.totalLayers,
-			strategy: collabProfile.strategy,
-			edgePercent: collabProfile.edgePercent,
-			cloudPercent: collabProfile.cloudPercent,
-			edgeStorageLimitGb: collabProfile.edgeStorageLimitGb
+			edgeDevice: 'Edge-A',
+			cloudDevice: 'Cloud-B',
+			cutLayer: 16,
+			totalLayers: 32,
+			strategy: '待计算'
 		});
 
+		collabPreparedModelId = primaryModelId;
 		toast.success('协同任务已提交，正在获取加载进度');
 		return true;
 	} catch (err) {
 		const message = err instanceof Error ? err.message : '协同任务启动失败';
 		toast.error(message);
 		resetCollabState();
+		collabPreparedModelId = '';
 		return false;
 	}
 };
@@ -468,7 +418,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		// 如果还是同一个协同模型，并且当前已经准备好了，就不要重置，也不要重触发
 		if (
 			nextModelId === previousModelId &&
-			nextModelId === getPreparedCollabModelId() &&
+			nextModelId === collabPreparedModelId &&
 			$collabState.enabled
 		) {
 			return;
@@ -881,7 +831,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		const pageSubscribe = page.subscribe(async (p) => {
 			if (p.url.pathname === '/') {
 				await tick();
-				initNewChat({ preserveCollab: true });
+				initNewChat();
 
 				// Re-fetch banners on navigation to homepage so newly configured banners appear
 				try {
@@ -1235,7 +1185,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 	// Web functions
 	//////////////////////////
 
-	const initNewChat = async ({ preserveCollab = false } = {}) => {
+	const initNewChat = async () => {
 		console.log('initNewChat');
 		if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
 			await temporaryChatEnabled.set(true);
@@ -1351,9 +1301,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		autoScroll = true;
 
 		resetInput();
-		if (!preserveCollab) {
-			resetCollabState();
-		}
+		resetCollabState();
+		collabPreparedModelId = '';
 
 		await chatId.set('');
 		await chatTitle.set('');
@@ -1438,6 +1387,9 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 	};
 
 	const loadChat = async () => {
+		resetCollabState();
+		collabPreparedModelId = '';
+
 		chatId.set(chatIdProp);
 
 		if ($temporaryChatEnabled) {
@@ -3157,6 +3109,7 @@ prompt = '';
 											<CollabTopRibbon />
 										</div>
 									{/if}
+
 								<Placeholder
 									{history}
 									{selectedModels}

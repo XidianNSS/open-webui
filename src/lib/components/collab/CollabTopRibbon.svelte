@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
 	import { fade } from 'svelte/transition';
 	import { collabState, setCollabRibbonExpanded } from '$lib/stores/collab';
 	import Collaboration from './Collaboration.svelte';
@@ -9,44 +7,36 @@
 		return Math.min(Math.max(value, min), max);
 	};
 
-	const getCollabDetailPath = () => {
-		if ($page.url.pathname.startsWith('/collab')) {
-			return '/collab';
-		}
-
-		const returnTo = `${$page.url.pathname}${$page.url.search}`;
-		return `/collab?returnTo=${encodeURIComponent(returnTo)}`;
-	};
-
-	const openDetailPage = async () => {
-		await goto(getCollabDetailPath());
-	};
-
 	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
-	$: edgeLayerCount = Math.max(
-		($collabState.edge.endLayer ?? 0) - ($collabState.edge.startLayer ?? 0) + 1,
-		0
-	);
-	$: fallbackEdgePercent = clamp(Math.round((edgeLayerCount / totalLayers) * 100), 0, 100);
-	$: edgePercent = clamp(
-		Math.round($collabState.split?.edgePercent ?? fallbackEdgePercent),
-		0,
-		100
-	);
-	$: cloudPercent = clamp(
-		Math.round($collabState.split?.cloudPercent ?? (100 - edgePercent)),
-		0,
-		100
-	);
-	$: totalPercent = Math.max(edgePercent + cloudPercent, 1);
-	$: edgeWidth = (edgePercent / totalPercent) * 100;
-	$: cloudWidth = (cloudPercent / totalPercent) * 100;
+
+	// 只有 strategy 真正加载出来后，才显示负载占比
+	$: hasStrategyPercent =
+		typeof $collabState.split?.edgeHeadCountTotal === 'number' &&
+		typeof $collabState.split?.cloudHeadCountTotal === 'number';
+
+	$: edgePercent = hasStrategyPercent
+		? clamp(Number(($collabState.split?.edgePercent ?? 0).toFixed(1)), 0, 100)
+		: 0;
+
+	$: cloudPercent = hasStrategyPercent
+		? clamp(Number(($collabState.split?.cloudPercent ?? 0).toFixed(1)), 0, 100)
+		: 0;
+
 	$: overallProgress = Math.max(
 		$collabState.overallProgress ?? Math.max($collabState.edge.progress, $collabState.cloud.progress),
 		0
 	);
+
+	// strategy 未返回前，大条按 overallProgress 走；返回后切换成边端/云端占比
+	$: loadingBarWidth = clamp(overallProgress, 0, 100);
+
+	$: totalPercent = Math.max(edgePercent + cloudPercent, 1);
+	$: edgeWidth = hasStrategyPercent ? (edgePercent / totalPercent) * 100 : 0;
+	$: cloudWidth = hasStrategyPercent ? (cloudPercent / totalPercent) * 100 : 0;
+
 	$: edgeDeviceLabel = $collabState.edge.device || $collabState.edge.name || 'Edge-A';
 	$: cloudDeviceLabel = $collabState.cloud.device || $collabState.cloud.name || 'Cloud-B';
+
 	$: overallStatusLabel = overallProgress >= 100 ? '已就绪' : '准备中';
 	$: networkStatusLabel =
 		$collabState.network.status === 'connected'
@@ -85,17 +75,19 @@
 						</div>
 
 						<div class="mt-1 text-[12px] text-[#667085] dark:text-gray-400 md:text-[13px]">
-							边端与云端协同完成模型切分、加载与链路准备
+							{$collabState.message}
 						</div>
 					</div>
 				</div>
 
 				<div class="flex items-center gap-2">
-					<div
-						class="inline-flex items-center rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
-					>
-						边端 {edgePercent}% / 云端 {cloudPercent}%
-					</div>
+					{#if hasStrategyPercent}
+						<div
+							class="inline-flex items-center rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
+						>
+							边端 {edgePercent}% / 云端 {cloudPercent}%
+						</div>
+					{/if}
 
 					<button
 						type="button"
@@ -140,13 +132,13 @@
 
 						<div class="mt-3 h-2.5 overflow-hidden rounded-full bg-[#EAF0F6] dark:bg-white/8">
 							<div
-								class="h-full rounded-full transition-all duration-300"
+								class="h-full rounded-full transition-all duration-500 ease-out"
 								style={`width:${$collabState.edge.progress}%;background:linear-gradient(90deg,#39B5FF 0%,#A9E6DA 100%);`}
 							></div>
 						</div>
 
 						<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-							状态: {$collabState.message}
+							状态: {$collabState.edge.status}
 						</div>
 					</div>
 
@@ -183,13 +175,13 @@
 
 						<div class="mt-3 h-2.5 overflow-hidden rounded-full bg-[#FFF0D9] dark:bg-white/8">
 							<div
-								class="h-full rounded-full transition-all duration-300"
+								class="h-full rounded-full transition-all duration-500 ease-out"
 								style={`width:${$collabState.cloud.progress}%;background:linear-gradient(90deg,#FF9F31 0%,#FFD97A 100%);`}
 							></div>
 						</div>
 
 						<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-							状态: {$collabState.message}
+							状态: {$collabState.cloud.status}
 						</div>
 					</div>
 				</div>
@@ -207,88 +199,78 @@
 							</div>
 						</div>
 
-						<div class="flex flex-wrap items-center gap-2">
-							<div
-								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
-							>
-								边端 {edgePercent}%
-							</div>
-							<div
-								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
-							>
-								云端 {cloudPercent}%
-							</div>
-							<div
-								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
-							>
-								RTT {$collabState.network.rttMs} ms
-							</div>
-							<div
-								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
-							>
-								带宽 {$collabState.network.bandwidthMbps} Mbps
-							</div>
+						<div class="flex flex-wrap gap-2">
+							{#if hasStrategyPercent}
+								<div
+									class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
+								>
+									边端 {edgePercent}%
+								</div>
+								<div
+									class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
+								>
+									云端 {cloudPercent}%
+								</div>
+							{/if}
+
 							<div
 								class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
 							>
 								链路 {networkStatusLabel}
 							</div>
-							<button
-								type="button"
-								class="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[12px] font-medium text-sky-700 transition hover:border-sky-300 hover:bg-sky-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-300"
-								on:click={openDetailPage}
-							>
-								展开详情
-							</button>
 						</div>
 					</div>
 
-					<button
-						type="button"
-						class="mt-4 block w-full rounded-[16px] border border-[#ECF1F6] bg-white p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] transition hover:border-sky-200 hover:shadow-[0_10px_30px_rgba(56,189,248,0.12)] dark:border-white/8 dark:bg-[#0B1118] dark:hover:border-sky-400/20"
-						on:click={openDetailPage}
+					<div
+						class="mt-4 rounded-[16px] border border-[#ECF1F6] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/8 dark:bg-[#0B1118]"
 					>
 						<div class="relative overflow-hidden rounded-2xl bg-[#EAF0F6] shadow-sm dark:bg-white/8">
 							<div
-								class="absolute inset-y-0 left-0 bg-[linear-gradient(90deg,#39B5FF_0%,#B9E8D8_100%)]"
-								style={`width:${edgeWidth}%`}
+								class="absolute inset-y-0 left-0 rounded-2xl bg-[linear-gradient(90deg,#DCE6F2_0%,#EEF3F8_100%)] transition-all duration-500 ease-out dark:bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.06)_100%)]"
+								style={`width:${loadingBarWidth}%;opacity:${hasStrategyPercent ? 0 : 1};`}
 							></div>
 
 							<div
-								class="absolute inset-y-0 right-0 bg-[linear-gradient(90deg,#FF9F31_0%,#F4C35E_100%)]"
-								style={`width:${cloudWidth}%`}
+								class="absolute inset-y-0 left-0 bg-[linear-gradient(90deg,#39B5FF_0%,#B9E8D8_100%)] transition-all duration-500 ease-out"
+								style={`width:${edgeWidth}%;opacity:${hasStrategyPercent ? 1 : 0};`}
 							></div>
 
 							<div
-								class="pointer-events-none absolute inset-0 opacity-15"
-								style="background-image:repeating-linear-gradient(120deg,rgba(255,255,255,.42)_0_10px,transparent_10px_20px);"
+								class="absolute inset-y-0 right-0 bg-[linear-gradient(90deg,#FF9F31_0%,#F4C35E_100%)] transition-all duration-500 ease-out"
+								style={`width:${cloudWidth}%;opacity:${hasStrategyPercent ? 1 : 0};`}
 							></div>
 
-							{#if edgeWidth > 0 && cloudWidth > 0}
-								<div
-									class="pointer-events-none absolute inset-y-1.5 z-[2] w-[2px] rounded-full bg-white/90 shadow-[0_0_0_1px_rgba(255,255,255,.45)]"
-									style={`left: calc(${edgeWidth}% - 1px);`}
-								></div>
-							{/if}
+							<div
+								class="pointer-events-none absolute inset-0 opacity-15 transition-opacity duration-500 ease-out"
+								style={`background-image:repeating-linear-gradient(120deg,rgba(255,255,255,.42)_0_10px,transparent_10px_20px);opacity:${hasStrategyPercent ? 0.15 : 0};`}
+							></div>
+
+							<div
+								class="pointer-events-none absolute inset-y-1.5 z-[2] w-[2px] rounded-full bg-white/90 shadow-[0_0_0_1px_rgba(255,255,255,.45)] transition-all duration-500 ease-out"
+								style={`left: calc(${edgeWidth}% - 1px);opacity:${hasStrategyPercent && edgeWidth > 0 && cloudWidth > 0 ? 1 : 0};`}
+							></div>
 
 							<div class="relative flex h-14">
 								<div
-									class="flex items-center px-5 text-[13px] font-semibold text-white"
-									style={`width:${edgeWidth}%`}
+									class="flex items-center px-5 text-[13px] font-semibold text-white transition-all duration-500 ease-out"
+									style={`width:${hasStrategyPercent ? edgeWidth : 0}%;opacity:${hasStrategyPercent ? 1 : 0};`}
 								>
 									<span class="truncate drop-shadow-sm">边端 {edgePercent}%</span>
 								</div>
 
 								<div
-									class="flex items-center justify-end px-5 text-[13px] font-semibold text-white"
-									style={`width:${cloudWidth}%`}
+									class="flex items-center justify-end px-5 text-[13px] font-semibold text-white transition-all duration-500 ease-out"
+									style={`width:${hasStrategyPercent ? cloudWidth : 0}%;opacity:${hasStrategyPercent ? 1 : 0};`}
 								>
 									<span class="truncate drop-shadow-sm">云端 {cloudPercent}%</span>
 								</div>
 							</div>
 						</div>
 
-						<div class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#667085] dark:text-gray-400">
+						<div
+							class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#667085] transition-all duration-500 ease-out dark:text-gray-400"
+							style={`opacity:${hasStrategyPercent ? 1 : 0};max-height:${hasStrategyPercent ? '40px' : '0px'};overflow:hidden;`}
+						>
 							<div class="flex items-center gap-2">
 								<span class="inline-block h-2.5 w-2.5 rounded-full bg-sky-400"></span>
 								<span>边端承担 {edgePercent}% 推理负载</span>
@@ -298,12 +280,8 @@
 								<span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-400"></span>
 								<span>云端承担 {cloudPercent}% 推理负载</span>
 							</div>
-
-							<div class="font-medium text-sky-600 dark:text-sky-300">
-								点击查看逐层切分详情
-							</div>
 						</div>
-					</button>
+					</div>
 				</div>
 			</div>
 		</section>
