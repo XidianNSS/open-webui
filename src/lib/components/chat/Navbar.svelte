@@ -64,28 +64,6 @@
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
 
-	const isEdgeCloudModel = (model: any) => {
-		const modelId = model?.id ?? '';
-
-		return Boolean(
-			model?.info?.meta?.collab_enabled ||
-			(model?.tags ?? []).some((tag) => /协同|collab/i.test(tag.name)) ||
-			/deepseek|edge-cloud|gpt2|tinyllama|llama[\s._:-]*3\.?2[\s._:-]*3b/i.test(modelId)
-		);
-	};
-
-const handleModelSelected = (event: CustomEvent) => {
-	const { model } = event.detail ?? {};
-	const modelId = model?.id ?? '';
-
-	// 忽略选择器中间态
-	if (!modelId) return;
-
-	// 只有明确切到非协同模型时才清空
-	if (!isEdgeCloudModel(model)) {
-		resetCollabState();
-	}
-};
 
 </script>
 
