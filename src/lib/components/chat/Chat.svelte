@@ -113,7 +113,7 @@
 	import {
 		collabState,
 		hasStoredCloudToken,
-		loginToCloud,
+		initSession,
 		startRealCollabPreparation,
 		resetCollabState
 } from '$lib/stores/collab';
@@ -282,7 +282,7 @@ const ensureCollabReadyForSelectedModel = async () => {
 
 	try {
 		if (!hasStoredCloudToken()) {
-			await loginToCloud();
+			await initSession();
 		}
 
 		const selectedModel = $models.find((m) => m.id === primaryModelId);

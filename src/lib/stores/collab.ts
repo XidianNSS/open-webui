@@ -12,7 +12,6 @@ export type CollabPhase =
 export type BackendTaskStatus = 'idle' | 'accepted' | 'running' | 'completed' | 'failed';
 export type BackendTaskPhase = 'idle' | 'strategy' | 'loading' | 'completed';
 
-// 描述后端返回的数据格式
 export interface BackendTask {
 	task_id: string;
 	status: Exclude<BackendTaskStatus, 'idle'>;
@@ -51,6 +50,23 @@ export interface TaskStrategyResponse {
 	decision: TaskStrategyDecision;
 }
 
+export interface CloudDeviceInfo {
+	id: string;
+	name: string;
+	type: string;
+	ip: string;
+}
+
+export interface SessionInitResponse {
+	session_id: string;
+	openwebui_user_id?: string;
+	openwebui_username?: string;
+	openwebui_role?: string;
+	edge_device?: CloudDeviceInfo;
+	cloud_device?: CloudDeviceInfo;
+	message?: string;
+}
+
 export interface CollabNodeState {
 	name: string;
 	device: string;
@@ -60,7 +76,6 @@ export interface CollabNodeState {
 	endLayer: number;
 }
 
-// 描述前端 store 里完整的状态结构
 export interface CollabState {
 	enabled: boolean;
 	mode: 'single' | 'edge_cloud';
@@ -69,6 +84,7 @@ export interface CollabState {
 	overallProgress: number;
 
 	token: string | null;
+	sessionId: string | null;
 	taskId: string | null;
 	backendStatus: BackendTaskStatus;
 	backendPhase: BackendTaskPhase;
@@ -103,21 +119,52 @@ export interface CollabState {
 	error: string | null;
 }
 
-type MockFailStage = 'none' | 'login' | 'trigger' | 'strategy' | 'loading';
+type MockFailStage = 'none' | 'login' | 'session_init' | 'trigger' | 'strategy' | 'loading';
 
 const isBrowser = typeof window !== 'undefined';
 
-const RAW_BASE = (import.meta.env.VITE_CLOUD_API_BASE ?? 'http://10.144.144.2:8010').replace(
-	/\/+$/,
-	''
-);
-const API_BASE = RAW_BASE.endsWith('/api/v1') ? RAW_BASE : `${RAW_BASE}/api/v1`;
+const isIpv4 = (value: string) => {
+	return /^(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)(\.(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)){3}$/.test(
+		value
+	);
+};
+
+const getRuntimeHostname = () => {
+	if (!isBrowser) return null;
+	return window.location.hostname?.trim() || null;
+};
+
+const resolveEdgeDeviceIp = () => {
+	const runtimeHost = getRuntimeHostname();
+	if (runtimeHost && isIpv4(runtimeHost) && runtimeHost !== '127.0.0.1') {
+		return runtimeHost;
+	}
+
+	return '';
+};
+
+const resolveApiBase = () => {
+	const envBase = (import.meta.env.VITE_CLOUD_API_BASE ?? '').trim();
+	if (envBase) {
+		const normalized = envBase.replace(/\/+$/, '');
+		return normalized.endsWith('/api/v1') ? normalized : `${normalized}/api/v1`;
+	}
+
+	if (!isBrowser) {
+		return 'http://127.0.0.1:8010/api/v1';
+	}
+
+	const { protocol, hostname } = window.location;
+	const base = `${protocol}//${hostname}:8010`;
+	return base.endsWith('/api/v1') ? base : `${base}/api/v1`;
+};
+const API_BASE = resolveApiBase();
 
 const USE_MOCK_CLOUD_API = (import.meta.env.VITE_USE_MOCK_CLOUD_API ?? 'true') === 'true';
 const MOCK_FAIL_STAGE = (import.meta.env.VITE_MOCK_CLOUD_FAIL_STAGE ?? 'none') as MockFailStage;
 
-const OPENWEBUI_TOKEN_KEY = 'token';
-const CLOUD_TOKEN_KEY = 'cloud_access_token';
+const OPENWEBUI_TOKEN_KEYS = ['token', 'openwebui_token'];
+const SESSION_ID_KEY = 'edge_session_id';
 
 const clamp = (value: number, min: number, max: number) => {
 	return Math.min(Math.max(value, min), max);
@@ -198,14 +245,37 @@ const summarizeStrategyDecision = (decision?: TaskStrategyDecision) => {
 	};
 };
 
-const getOpenWebUIToken = () => {
-	if (!isBrowser) return null;
-	return window.localStorage.getItem(OPENWEBUI_TOKEN_KEY) ?? null;
+const normalizeStoredToken = (raw: string | null) => {
+	if (!raw) return null;
+
+	try {
+		const parsed = JSON.parse(raw);
+
+		if (typeof parsed === 'string') return parsed;
+		if (parsed && typeof parsed === 'object') {
+			return parsed.token ?? parsed.access_token ?? raw;
+		}
+	} catch {
+		// ignore
+	}
+
+	return raw;
 };
 
-const getCloudToken = () => {
+const getOpenWebUIToken = () => {
 	if (!isBrowser) return null;
-	return window.localStorage.getItem(CLOUD_TOKEN_KEY) ?? null;
+
+	for (const key of OPENWEBUI_TOKEN_KEYS) {
+		const token = normalizeStoredToken(window.localStorage.getItem(key));
+		if (token) return token;
+	}
+
+	return null;
+};
+
+const getSessionId = () => {
+	if (!isBrowser) return null;
+	return window.localStorage.getItem(SESSION_ID_KEY) ?? null;
 };
 
 const setRuntimeToken = (token: string | null) => {
@@ -215,14 +285,23 @@ const setRuntimeToken = (token: string | null) => {
 	}));
 };
 
-const setCloudToken = (token: string | null) => {
+const setRuntimeSessionId = (sessionId: string | null) => {
+	collabState.update((s) => ({
+		...s,
+		sessionId
+	}));
+};
+
+const setSessionId = (sessionId: string | null) => {
 	if (!isBrowser) return;
 
-	if (token) {
-		window.localStorage.setItem(CLOUD_TOKEN_KEY, token);
+	if (sessionId) {
+		window.localStorage.setItem(SESSION_ID_KEY, sessionId);
 	} else {
-		window.localStorage.removeItem(CLOUD_TOKEN_KEY);
+		window.localStorage.removeItem(SESSION_ID_KEY);
 	}
+
+	setRuntimeSessionId(sessionId);
 };
 
 const parseJsonSafely = async (res: Response) => {
@@ -271,7 +350,8 @@ const initialState: CollabState = {
 	phase: 'idle',
 	overallProgress: 0,
 
-	token: getCloudToken(),
+	token: getOpenWebUIToken(),
+	sessionId: getSessionId(),
 	taskId: null,
 	backendStatus: 'idle',
 	backendPhase: 'idle',
@@ -329,7 +409,8 @@ export const resetCollabState = () => {
 	strategyLoadingTaskIds.clear();
 	collabState.set({
 		...initialState,
-		token: getCloudToken()
+		token: getOpenWebUIToken(),
+		sessionId: getSessionId()
 	});
 };
 
@@ -341,28 +422,45 @@ export const toggleCollabRibbon = () => {
 	collabState.update((s) => ({ ...s, ribbonExpanded: !s.ribbonExpanded }));
 };
 
+export const clearSession = () => {
+	setSessionId(null);
+};
+
+export const hasStoredSession = () => {
+	return Boolean(getSessionId());
+};
+
+// 为了尽量不影响其他文件中的旧引用，保留兼容导出
 export const clearCloudToken = () => {
-	setCloudToken(null);
-	collabState.update((s) => ({
-		...s,
-		token: null
-	}));
+	clearSession();
 };
 
 export const hasStoredCloudToken = () => {
-	return Boolean(getCloudToken());
+	return hasStoredSession();
 };
 
-const getAuthorizedHeaders = () => {
-	const token = getCloudToken();
+const getAuthorizedHeaders = (options?: { includeSessionId?: boolean }) => {
+	const token = getOpenWebUIToken();
 
 	if (!token) {
-		throw new Error('云端调度 token 不存在，请先完成 token exchange');
+		throw new Error('OpenWebUI 尚未登录，无法调用云端调度接口');
 	}
 
-	return {
+	const headers: Record<string, string> = {
 		Authorization: `Bearer ${token}`
 	};
+
+	if (options?.includeSessionId) {
+		const sessionId = getSessionId();
+
+		if (!sessionId) {
+			throw new Error('session_id 不存在，请先调用 /api/v1/session/init');
+		}
+
+		headers['Session-Id'] = sessionId;
+	}
+
+	return headers;
 };
 
 const inferUiPhase = (task: BackendTask): CollabPhase => {
@@ -414,6 +512,7 @@ export const applyTaskToStore = (task: BackendTask) => {
 		ribbonExpanded: task.status === 'completed' ? false : true,
 		phase: inferUiPhase(task),
 		overallProgress: clamp(task.overall_progress ?? 0, 0, 100),
+		token: getOpenWebUIToken(),
 		taskId: task.task_id,
 		backendStatus: task.status,
 		backendPhase: task.phase,
@@ -492,28 +591,43 @@ const mockTaskStore = new Map<
 		startAt: number;
 		failAt: MockFailStage;
 		modelType: string;
+		sessionId: string;
 	}
 >();
 
 const mockNowIso = () => new Date().toISOString();
 
-const mockLoginToCloud = async () => {
+const mockInitSession = async (): Promise<SessionInitResponse> => {
 	await wait(100);
 
-	if (MOCK_FAIL_STAGE === 'login') {
-		throw new Error('mock: token exchange 失败');
+	if (MOCK_FAIL_STAGE === 'login' || MOCK_FAIL_STAGE === 'session_init') {
+		throw new Error('mock: session 初始化失败');
 	}
 
-	const token = 'mock-cloud-backend-token';
+	const sessionId = `mock-session-${Date.now()}`;
+	const edgeDeviceIp = resolveEdgeDeviceIp();
 
-	setCloudToken(token);
-	setRuntimeToken(token);
+	setRuntimeToken(getOpenWebUIToken());
+	setSessionId(sessionId);
 
 	return {
-		access_token: token,
-		token_type: 'bearer',
-		username: 'mock-user',
-		role: 'user'
+		session_id: sessionId,
+		openwebui_user_id: 'mock-user-id',
+		openwebui_username: 'mock-user',
+		openwebui_role: 'user',
+		edge_device: {
+			id: 'edge_A',
+			name: '边端 A',
+			type: 'edge',
+			ip: edgeDeviceIp
+		},
+		cloud_device: {
+			id: 'cloud',
+			name: '云端主机',
+			type: 'cloud',
+			ip: '10.144.144.2'
+		},
+		message: 'mock: session 初始化成功'
 	};
 };
 
@@ -524,12 +638,18 @@ const mockTriggerScheduleTask = async (modelType: string): Promise<BackendTask> 
 		throw new Error('mock: 任务创建失败');
 	}
 
+	const sessionId = getSessionId();
+	if (!sessionId) {
+		throw new Error('mock: session_id 不存在，请先初始化会话');
+	}
+
 	const taskId = `mock-task-${Date.now()}`;
 
 	mockTaskStore.set(taskId, {
 		startAt: Date.now(),
 		failAt: MOCK_FAIL_STAGE,
-		modelType
+		modelType,
+		sessionId
 	});
 
 	return {
@@ -539,8 +659,8 @@ const mockTriggerScheduleTask = async (modelType: string): Promise<BackendTask> 
 		phase_progress: 0,
 		overall_progress: 0,
 		message: '任务已受理，开始计算切分策略',
-		edge_message: '边端正在加载模型权重',
-		cloud_message: '云端正在初始化推理上下文',
+		edge_message: '边端等待策略结果',
+		cloud_message: '云端等待策略结果',
 		created_at: mockNowIso(),
 		updated_at: mockNowIso()
 	};
@@ -565,8 +685,8 @@ const mockGetTaskStatus = async (taskId: string): Promise<BackendTask> => {
 			phase_progress: 58,
 			overall_progress: 24,
 			message: '切分策略计算失败',
-			edge_message: '边端正在加载模型权重',
-			cloud_message: '云端正在初始化推理上下文',
+			edge_message: '边端等待策略结果',
+			cloud_message: '云端等待策略结果',
 			error_detail: 'mock: strategy service unavailable',
 			created_at: mockNowIso(),
 			updated_at: mockNowIso()
@@ -678,43 +798,45 @@ const mockGetTaskStrategy = async (taskId: string): Promise<TaskStrategyResponse
    Real API / unified exports
    ========================= */
 
-export const loginToCloud = async () => {
+export const initSession = async (): Promise<SessionInitResponse> => {
 	if (USE_MOCK_CLOUD_API) {
-		return mockLoginToCloud();
+		return mockInitSession();
 	}
 
 	const openwebuiToken = getOpenWebUIToken();
 
 	if (!openwebuiToken) {
-		throw new Error('OpenWebUI 尚未登录，无法进行 token exchange');
+		throw new Error('OpenWebUI 尚未登录，无法初始化边端会话');
 	}
 
-	const res = await fetch(`${API_BASE}/auth/exchange`, {
+	const edgeDeviceIp = resolveEdgeDeviceIp();
+
+	const res = await fetch(`${API_BASE}/session/init`, {
 		method: 'POST',
 		headers: {
-			'Content-Type': 'application/json'
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${openwebuiToken}`
 		},
 		body: JSON.stringify({
-			openwebui_token: openwebuiToken
+			edge_device_ip: edgeDeviceIp
 		})
 	});
 
 	const data = await parseJsonSafely(res);
 
 	if (!res.ok) {
-		throw new Error(extractErrorMessage(data, 'token exchange 失败'));
+		throw new Error(extractErrorMessage(data, 'session 初始化失败'));
 	}
 
-	const cloudToken = data?.access_token;
-
-	if (!cloudToken) {
-		throw new Error('token exchange 成功，但返回中没有 access_token');
+	const sessionId = data?.session_id;
+	if (!sessionId) {
+		throw new Error('session 初始化成功，但返回中没有 session_id');
 	}
 
-	setCloudToken(cloudToken);
-	setRuntimeToken(cloudToken);
+	setRuntimeToken(openwebuiToken);
+	setSessionId(sessionId);
 
-	return data;
+	return data as SessionInitResponse;
 };
 
 export const triggerScheduleTask = async (modelType: string): Promise<BackendTask> => {
@@ -726,7 +848,7 @@ export const triggerScheduleTask = async (modelType: string): Promise<BackendTas
 		method: 'POST',
 		headers: {
 			'Content-Type': 'application/json',
-			...getAuthorizedHeaders()
+			...getAuthorizedHeaders({ includeSessionId: true })
 		},
 		body: JSON.stringify({
 			model_type: modelType
@@ -736,8 +858,8 @@ export const triggerScheduleTask = async (modelType: string): Promise<BackendTas
 	const data = await parseJsonSafely(res);
 
 	if (res.status === 401) {
-		clearCloudToken();
-		throw new Error('云端调度 token 已失效，请重新进行 token exchange');
+		clearSession();
+		throw new Error('OpenWebUI token 无效、过期，或 Session-Id 与当前 token 不匹配');
 	}
 
 	if (!res.ok) {
@@ -761,8 +883,7 @@ export const getTaskStatus = async (taskId: string) => {
 	const data = await parseJsonSafely(res);
 
 	if (res.status === 401) {
-		clearCloudToken();
-		throw new Error('云端调度 token 已失效，请重新进行 token exchange');
+		throw new Error('OpenWebUI token 无效或已过期，请重新登录 OpenWebUI');
 	}
 
 	if (!res.ok) {
@@ -786,8 +907,7 @@ export const getTaskStrategy = async (taskId: string): Promise<TaskStrategyRespo
 	const data = await parseJsonSafely(res);
 
 	if (res.status === 401) {
-		clearCloudToken();
-		throw new Error('云端调度 token 已失效，请重新进行 token exchange');
+		throw new Error('OpenWebUI token 无效或已过期，请重新登录 OpenWebUI');
 	}
 
 	if (!res.ok) {
@@ -817,8 +937,6 @@ const ensureTaskStrategyLoaded = (taskId: string) => {
 		});
 };
 
-// 轮询器：每隔 300ms 调用一次 getTaskStatus(taskId)
-// 把得到的任务结果交给 applyTaskToStore，直到任务 completed 或 failed 停止
 export const startTaskPolling = (taskId: string) => {
 	if (!isBrowser) return;
 
@@ -828,19 +946,15 @@ export const startTaskPolling = (taskId: string) => {
 		try {
 			const task = await getTaskStatus(taskId);
 
-			// 先更新状态，这样边端/云端小进度条会持续动
 			applyTaskToStore(task);
 
-			// 任务结束就停止轮询
 			if (task.status === 'completed' || task.status === 'failed') {
 				stopTaskPolling();
 				return;
 			}
 
-			// 先挂下一轮轮询，保证状态轮询不中断
 			pollTimer = window.setTimeout(poll, 300);
 
-			// 进入 loading 后，只触发一次 strategy 拉取
 			if (task.phase === 'loading') {
 				ensureTaskStrategyLoaded(task.task_id);
 			}
@@ -862,7 +976,7 @@ export const startTaskPolling = (taskId: string) => {
 
 	void poll();
 };
-// 流程入口，清理旧定时器和轮询，根据传入的 payload 计算层数等。
+
 export const startRealCollabPreparation = async (
 	modelType: string,
 	payload?: {
@@ -892,6 +1006,8 @@ export const startRealCollabPreparation = async (
 		totalLayers
 	});
 
+	// 新流程：先初始化 session，再发起调度
+	const session = await initSession();
 	const task = await triggerScheduleTask(modelType);
 
 	collabState.update((s) => ({
@@ -901,15 +1017,17 @@ export const startRealCollabPreparation = async (
 		ribbonExpanded: true,
 		phase: 'planning',
 		overallProgress: 0,
+		token: getOpenWebUIToken(),
+		sessionId: session.session_id,
 		taskId: task.task_id,
 		backendStatus: task.status,
 		backendPhase: task.phase,
-		message: task.message ?? '任务已受理，开始计算切分策略',
+		message: task.message ?? session.message ?? '任务已受理，开始计算切分策略',
 		error: null,
 		edge: {
 			...s.edge,
 			name: payload?.edgeModel ?? s.edge.name,
-			device: payload?.edgeDevice ?? s.edge.device,
+			device: payload?.edgeDevice ?? session.edge_device?.name ?? s.edge.device,
 			progress: 0,
 			status: '等待切分策略',
 			startLayer: 0,
@@ -918,7 +1036,7 @@ export const startRealCollabPreparation = async (
 		cloud: {
 			...s.cloud,
 			name: payload?.cloudModel ?? s.cloud.name,
-			device: payload?.cloudDevice ?? s.cloud.device,
+			device: payload?.cloudDevice ?? session.cloud_device?.name ?? s.cloud.device,
 			progress: 0,
 			status: '等待切分策略',
 			startLayer: cutLayer,
@@ -950,4 +1068,3 @@ export const startRealCollabPreparation = async (
 	startTaskPolling(task.task_id);
 	return task;
 };
-
