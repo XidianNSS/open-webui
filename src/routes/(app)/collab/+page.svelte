@@ -15,17 +15,15 @@
 	};
 </script>
 
-<div
-	class="h-screen max-h-[100dvh] w-full overflow-y-auto bg-[radial-gradient(circle_at_top,#eef7ff_0%,#f8fbff_34%,#f5f7fb_100%)] dark:bg-[#0B1220]"
->
+<div class="h-screen max-h-[100dvh] w-full overflow-y-auto bg-white dark:bg-[#0B1220]">
 	{#if $collabState.enabled}
-		<div class="mx-auto max-w-[1440px] px-4 py-5 md:px-7 md:py-7">
+		<div class="mx-auto max-w-[1680px] px-6 py-5 md:px-10 md:py-6">
 			<CollabLayerSplitPanel />
 		</div>
 	{:else}
 		<div class="mx-auto flex min-h-full max-w-[760px] items-center px-4 py-10">
 			<section
-				class="w-full rounded-[28px] border border-slate-200/85 bg-white/95 p-8 text-center shadow-[0_24px_60px_rgba(15,23,42,0.08)] dark:border-white/8 dark:bg-[#0F1723]"
+				class="w-full rounded-[24px] border border-slate-200/85 bg-white p-8 text-center dark:border-white/8 dark:bg-[#0F1723]"
 			>
 				<h1 class="text-[28px] font-semibold tracking-tight text-slate-900 dark:text-white">
 					边云协同尚未就绪
