@@ -845,7 +845,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		const pageSubscribe = page.subscribe(async (p) => {
 			if (p.url.pathname === '/') {
 				await tick();
-				initNewChat();
+				initNewChat({ preserveCollab: true });
 
 				// Re-fetch banners on navigation to homepage so newly configured banners appear
 				try {
@@ -1199,7 +1199,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 	// Web functions
 	//////////////////////////
 
-	const initNewChat = async () => {
+	const initNewChat = async ({ preserveCollab = false } = {}) => {
 		console.log('initNewChat');
 		if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
 			await temporaryChatEnabled.set(true);
@@ -1315,8 +1315,10 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		autoScroll = true;
 
 		resetInput();
-		resetCollabState();
-		collabPreparedModelId = '';
+		if (!preserveCollab) {
+			resetCollabState();
+			collabPreparedModelId = '';
+		}
 
 		await chatId.set('');
 		await chatTitle.set('');
@@ -1401,9 +1403,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 	};
 
 	const loadChat = async () => {
-		resetCollabState();
-		collabPreparedModelId = '';
-
 		chatId.set(chatIdProp);
 
 		if ($temporaryChatEnabled) {
