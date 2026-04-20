@@ -97,6 +97,7 @@
 	import MessageInput from '$lib/components/chat/MessageInput.svelte';
 	import Messages from '$lib/components/chat/Messages.svelte';
 	import Navbar from '$lib/components/chat/Navbar.svelte';
+	import EncryptedMirrorPanel from '$lib/components/chat/EncryptedMirrorPanel.svelte';
 
 	import ChatControls from './ChatControls.svelte';
 	import EventConfirmDialog from '../common/ConfirmDialog.svelte';
@@ -153,6 +154,11 @@
 		selectedModelIds = selectedModels;
 	}
 
+	$: encryptedMirrorModelLabel =
+	atSelectedModel?.name ??
+	$models.find((m) => m.id === selectedModels[0])?.name ??
+	$WEBUI_NAME;
+
 	let selectedToolIds = [];
 	let selectedFilterIds = [];
 	let pendingOAuthTools = [];
@@ -182,6 +188,12 @@
 	let chatFiles = [];
 	let files = [];
 	let params = {};
+
+	let encryptedMirrorOpen = true;
+
+
+
+
 
 	$: if (chatIdProp) {
 		navigateHandler();
@@ -400,6 +412,8 @@ let oldSelectedModelIds = [''];
 $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
 	void onSelectedModelIdsChange();
 }
+
+
 
 	const onSelectedModelIdsChange = async () => {
 		const previousModelId =
@@ -2449,7 +2463,7 @@ prompt = '';
 								tags_generation: $settings?.autoTags ?? true
 							}
 						: {}),
-					follow_up_generation: $settings?.autoFollowUps ?? true
+					follow_up_generation: false
 				},
 
 				...(stream && (model.info?.meta?.capabilities?.usage ?? false)
@@ -2970,184 +2984,207 @@ prompt = '';
 						}}
 					/>
 
-					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
-						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+					<div id="chat-pane" class="relative flex flex-auto z-10 w-full min-w-0 overflow-hidden">
+	<div class="absolute right-0 top-1/2 z-30 hidden -translate-y-1/2 xl:flex">
+		<button
+			class="group flex h-14 w-10 items-center justify-center rounded-l-2xl border border-r-0 border-slate-200 bg-white/96 text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-50 hover:text-slate-900"
+			on:click={() => (encryptedMirrorOpen = !encryptedMirrorOpen)}
+			aria-label={encryptedMirrorOpen ? '收起密态镜像页' : '展开密态镜像页'}
+			title={encryptedMirrorOpen ? '收起密态镜像页' : '展开密态镜像页'}
+		>
+			<span
+				class="text-lg leading-none transition-transform duration-200 {encryptedMirrorOpen ? 'rotate-180' : ''}"
+			>
+				‹
+			</span>
+		</button>
+	</div>
 
-							{#if $collabState.enabled && $collabState.ribbonExpanded}
-								<div class="w-full max-w-[960px] shrink-0 self-center px-4 pt-2">
-									<CollabTopRibbon />
-								</div>
-							{/if}
-							<div
-								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
-								id="messages-container"
-								bind:this={messagesContainerElement}
-								on:scroll={(e) => {
-									autoScroll =
-										messagesContainerElement.scrollHeight - messagesContainerElement.scrollTop <=
-										messagesContainerElement.clientHeight + 5;
-								}}
-							>
-								<div class=" h-full w-full flex flex-col">
-									<Messages
-										chatId={$chatId}
-										bind:history
-										bind:autoScroll
-										bind:prompt
-										setInputText={(text) => {
-											messageInput?.setText(text);
-										}}
-										{selectedModels}
-										{atSelectedModel}
-										{sendMessage}
-										{showMessage}
-										{submitMessage}
-										{continueResponse}
-										{regenerateResponse}
-										{mergeResponses}
-										{chatActionHandler}
-										{addMessages}
-										topPadding={true}
-										bottomPadding={files.length > 0}
-										{onSelect}
-									/>
-								</div>
-							</div>
+	<div
+		class={`flex min-w-0 flex-col overflow-auto transition-all duration-300 ${
+			encryptedMirrorOpen ? 'w-1/2 border-r border-slate-200/70' : 'w-full'
+		}`}
+	>
+		{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+			{#if $collabState.enabled && $collabState.ribbonExpanded}
+				<div class="w-full max-w-[960px] shrink-0 self-center px-4 pt-2">
+					<CollabTopRibbon />
+				</div>
+			{/if}
 
-							<div class=" pb-2 {dragged ? 'z-0' : 'z-10'}">
+			<div
+				class="pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
+				id="messages-container"
+				bind:this={messagesContainerElement}
+				on:scroll={(e) => {
+					autoScroll =
+						messagesContainerElement.scrollHeight - messagesContainerElement.scrollTop <=
+						messagesContainerElement.clientHeight + 5;
+				}}
+			>
+				<div class="h-full w-full flex flex-col">
+					<Messages
+						chatId={$chatId}
+						bind:history
+						bind:autoScroll
+						bind:prompt
+						setInputText={(text) => {
+							messageInput?.setText(text);
+						}}
+						{selectedModels}
+						{atSelectedModel}
+						{sendMessage}
+						{showMessage}
+						{submitMessage}
+						{continueResponse}
+						{regenerateResponse}
+						{mergeResponses}
+						{chatActionHandler}
+						{addMessages}
+						topPadding={true}
+						bottomPadding={files.length > 0}
+						{onSelect}
+					/>
+				</div>
+			</div>
 
-								<MessageInput
-									bind:this={messageInput}
-									{history}
-									{taskIds}
-									{selectedModels}
-									bind:files
-									bind:prompt
-									bind:autoScroll
-									bind:selectedToolIds
-									bind:selectedFilterIds
-									bind:imageGenerationEnabled
-									bind:codeInterpreterEnabled
-									{pendingOAuthTools}
-									bind:webSearchEnabled
-									bind:atSelectedModel
-									bind:showCommands
-									bind:dragged
-									toolServers={$toolServers}
-									{generating}
-									{stopResponse}
-									{createMessagePair}
-									{onUpload}
-									messageQueue={$chatRequestQueues[$chatId] ?? []}
-									onQueueSendNow={async (id) => {
-										const queue = $chatRequestQueues[$chatId] ?? [];
-										const item = queue.find((m) => m.id === id);
-										if (item) {
-											// Remove from queue
-											chatRequestQueues.update((q) => ({
-												...q,
-												[$chatId]: queue.filter((m) => m.id !== id)
-											}));
-											// Stop current generation first
-											await stopResponse();
-											await tick();
-											// Set files and submit
-											files = item.files;
-											await tick();
-											await submitPrompt(item.prompt);
-										}
-									}}
-									onQueueEdit={(id) => {
-										const queue = $chatRequestQueues[$chatId] ?? [];
-										const item = queue.find((m) => m.id === id);
-										if (item) {
-											// Remove from queue
-											chatRequestQueues.update((q) => ({
-												...q,
-												[$chatId]: queue.filter((m) => m.id !== id)
-											}));
-											// Set files and restore prompt to input
-											files = item.files;
-											messageInput?.setText(item.prompt);
-										}
-									}}
-									onQueueDelete={(id) => {
-										const queue = $chatRequestQueues[$chatId] ?? [];
-										chatRequestQueues.update((q) => ({
-											...q,
-											[$chatId]: queue.filter((m) => m.id !== id)
-										}));
-									}}
-									onChange={(data) => {
-										if (!$temporaryChatEnabled) {
-											saveDraft(data, $chatId);
-										}
-									}}
-									on:submit={async (e) => {
-										clearDraft();
-										if (e.detail || files.length > 0) {
-											await tick();
+			<div class="pb-2 {dragged ? 'z-0' : 'z-10'}">
+				<MessageInput
+					bind:this={messageInput}
+					{history}
+					{taskIds}
+					{selectedModels}
+					bind:files
+					bind:prompt
+					bind:autoScroll
+					bind:selectedToolIds
+					bind:selectedFilterIds
+					bind:imageGenerationEnabled
+					bind:codeInterpreterEnabled
+					{pendingOAuthTools}
+					bind:webSearchEnabled
+					bind:atSelectedModel
+					bind:showCommands
+					bind:dragged
+					toolServers={$toolServers}
+					{generating}
+					{stopResponse}
+					{createMessagePair}
+					{onUpload}
+					messageQueue={$chatRequestQueues[$chatId] ?? []}
+					onQueueSendNow={async (id) => {
+						const queue = $chatRequestQueues[$chatId] ?? [];
+						const item = queue.find((m) => m.id === id);
+						if (item) {
+							chatRequestQueues.update((q) => ({
+								...q,
+								[$chatId]: queue.filter((m) => m.id !== id)
+							}));
+							await stopResponse();
+							await tick();
+							files = item.files;
+							await tick();
+							await submitPrompt(item.prompt);
+						}
+					}}
+					onQueueEdit={(id) => {
+						const queue = $chatRequestQueues[$chatId] ?? [];
+						const item = queue.find((m) => m.id === id);
+						if (item) {
+							chatRequestQueues.update((q) => ({
+								...q,
+								[$chatId]: queue.filter((m) => m.id !== id)
+							}));
+							files = item.files;
+							messageInput?.setText(item.prompt);
+						}
+					}}
+					onQueueDelete={(id) => {
+						const queue = $chatRequestQueues[$chatId] ?? [];
+						chatRequestQueues.update((q) => ({
+							...q,
+							[$chatId]: queue.filter((m) => m.id !== id)
+						}));
+					}}
+					onChange={(data) => {
+						if (!$temporaryChatEnabled) {
+							saveDraft(data, $chatId);
+						}
+					}}
+					on:submit={async (e) => {
+						clearDraft();
+						if (e.detail || files.length > 0) {
+							await tick();
+							submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+						}
+					}}
+				/>
 
-											submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-										}
-									}}
-								/>
-
-								<div
-									class="absolute bottom-1 text-xs text-gray-500 text-center line-clamp-1 right-0 left-0"
-								>
-									<!-- {$i18n.t('LLMs can make mistakes. Verify important information.')} -->
-								</div>
-							</div>
-						{:else}
-								<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
-<!--									<div class="w-full max-w-[960px] pt-2">-->
-<!--										<CollabTopRibbon />-->
-<!--									</div>-->
-									{#if $collabState.enabled && $collabState.ribbonExpanded}
-										<div class="w-full max-w-[960px] pt-2">
-											<CollabTopRibbon />
-										</div>
-									{/if}
-
-								<Placeholder
-									{history}
-									{selectedModels}
-									bind:messageInput
-									bind:files
-									bind:prompt
-									bind:autoScroll
-									bind:selectedToolIds
-									bind:selectedFilterIds
-									bind:imageGenerationEnabled
-									bind:codeInterpreterEnabled
-									bind:webSearchEnabled
-									bind:atSelectedModel
-									bind:showCommands
-									bind:dragged
-									{pendingOAuthTools}
-									toolServers={$toolServers}
-									{stopResponse}
-									{createMessagePair}
-									{onSelect}
-									{onUpload}
-									onChange={(data) => {
-										if (!$temporaryChatEnabled) {
-											saveDraft(data);
-										}
-									}}
-									on:submit={async (e) => {
-										clearDraft();
-										if (e.detail || files.length > 0) {
-											await tick();
-											submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-										}
-									}}
-								/>
-							</div>
-						{/if}
+				<div
+					class="absolute bottom-1 text-xs text-gray-500 text-center line-clamp-1 right-0 left-0"
+				>
+					<!-- {$i18n.t('LLMs can make mistakes. Verify important information.')} -->
+				</div>
+			</div>
+		{:else}
+			<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
+				{#if $collabState.enabled && $collabState.ribbonExpanded}
+					<div class="w-full max-w-[960px] pt-2">
+						<CollabTopRibbon />
 					</div>
+				{/if}
+
+				<Placeholder
+					{history}
+					{selectedModels}
+					bind:messageInput
+					bind:files
+					bind:prompt
+					bind:autoScroll
+					bind:selectedToolIds
+					bind:selectedFilterIds
+					bind:imageGenerationEnabled
+					bind:codeInterpreterEnabled
+					bind:webSearchEnabled
+					bind:atSelectedModel
+					bind:showCommands
+					bind:dragged
+					{pendingOAuthTools}
+					toolServers={$toolServers}
+					{stopResponse}
+					{createMessagePair}
+					{onSelect}
+					{onUpload}
+					onChange={(data) => {
+						if (!$temporaryChatEnabled) {
+							saveDraft(data);
+						}
+					}}
+					on:submit={async (e) => {
+						clearDraft();
+						if (e.detail || files.length > 0) {
+							await tick();
+							submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+						}
+					}}
+				/>
+			</div>
+		{/if}
+	</div>
+
+	{#if encryptedMirrorOpen}
+	<EncryptedMirrorPanel
+		chatId={$chatId}
+		{history}
+		{selectedModels}
+		{atSelectedModel}
+		modelLabel={encryptedMirrorModelLabel}
+		{onSelect}
+	/>
+{/if}
+</div>
 				</Pane>
+				
 
 				<ChatControls
 					bind:this={controlPaneComponent}
