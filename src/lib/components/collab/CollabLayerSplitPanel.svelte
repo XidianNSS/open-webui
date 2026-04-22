@@ -4,7 +4,6 @@
 	import { collabState } from '$lib/stores/collab';
 
 	type HeadOwner = 'edge' | 'cloud';
-	type LayerTone = 'edge' | 'balanced' | 'cloud';
 	type FFNOwner = 'edge' | 'cloud' | 'hybrid';
 
 	type HeadCell = {
@@ -14,19 +13,16 @@
 
 	type LayerRow = {
 		id: number;
-		code: string;
 		label: string;
 		heads: HeadCell[];
 		edgeHeads: number;
 		cloudHeads: number;
-		summaryTone: LayerTone;
-		summaryLabel: string;
 		ffnOwner: FFNOwner;
 		ffnLabel: string;
 	};
 
 	const HEADS_PER_LAYER = 24;
-	const HEADS_PER_ROW = 16;
+	const HEADS_PER_ROW = 20;
 	const HEAD_CELL_MIN_WIDTH = 44;
 	const HEAD_CELL_HEIGHT = 56;
 	const HEAD_CELL_GAP = 8;
@@ -48,6 +44,8 @@
 	};
 
 	const goBack = async () => {
+		sessionStorage.setItem('skipCollabReload', '1');
+		sessionStorage.setItem('skipCollabRibbonAnimation', '1');
 		await goto(getReturnPath());
 	};
 
@@ -57,7 +55,6 @@
 		const rowRatio = rowCount > 1 ? rowIndex / (rowCount - 1) : 0;
 		const edgeBias = clamp(edgePercent / 100, 0.18, 0.82);
 		const cloudStart = clamp(0.22 + (1 - edgeBias) * 0.44 + rowRatio * 0.28, 0.08, 0.94);
-		const cloudWindow = 0.06 + Math.sin((rowIndex + 1) * 0.72) * 0.025;
 
 		return Array.from({ length: HEADS_PER_LAYER }, (_, headIndex) => {
 			const headRatio = headIndex / Math.max(HEADS_PER_LAYER - 1, 1);
@@ -70,19 +67,6 @@
 				owner
 			} satisfies HeadCell;
 		});
-	};
-
-	const getLayerTone = (edgeHeads: number, cloudHeads: number): LayerTone => {
-		const delta = Math.abs(edgeHeads - cloudHeads);
-
-		if (delta <= 3) return 'balanced';
-		return edgeHeads > cloudHeads ? 'edge' : 'cloud';
-	};
-
-	const getSummaryLabel = (tone: LayerTone) => {
-		if (tone === 'edge') return '偏边端层';
-		if (tone === 'cloud') return '偏云端层';
-		return '边云混合层';
 	};
 
 	const getFFNOwner = (
@@ -104,6 +88,10 @@
 		return 'FFN: 边云协同';
 	};
 
+	const getFFNClassName = () => {
+		return 'text-slate-500 dark:text-slate-400';
+	};
+
 	const buildLayerRows = (
 		rowCount: number,
 		edgePercent: number,
@@ -114,28 +102,18 @@
 			const heads = buildHeads(rowIndex, rowCount, edgePercent);
 			const edgeHeads = heads.filter((head) => head.owner === 'edge').length;
 			const cloudHeads = heads.length - edgeHeads;
-			const summaryTone = getLayerTone(edgeHeads, cloudHeads);
 			const ffnOwner = getFFNOwner(rowIndex, rowCount, totalLayers, cutLayer);
 
 			return {
 				id: rowIndex + 1,
-				code: `L${rowIndex + 1}`,
 				label: `Layer${rowIndex + 1}`,
 				heads,
 				edgeHeads,
 				cloudHeads,
-				summaryTone,
-				summaryLabel: getSummaryLabel(summaryTone),
 				ffnOwner,
 				ffnLabel: getFFNLabel(ffnOwner)
 			};
 		});
-	};
-
-	const getFFNClassName = (ffnOwner: FFNOwner) => {
-		if (ffnOwner === 'edge') return 'text-amber-700 dark:text-amber-300';
-		if (ffnOwner === 'cloud') return 'text-sky-700 dark:text-sky-300';
-		return 'text-violet-700 dark:text-violet-300';
 	};
 
 	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
@@ -214,11 +192,11 @@
 			</div>
 			<div class="flex flex-wrap items-center gap-3">
 				<div class="inline-flex items-center gap-2">
-					<span class="h-3 w-3 rounded-full bg-[#FFB629]"></span>
+					<span class="h-3 w-3 rounded-full bg-[#45B4FF]"></span>
 					<span>边端颜色</span>
 				</div>
 				<div class="inline-flex items-center gap-2">
-					<span class="h-3 w-3 rounded-full bg-[#45B4FF]"></span>
+					<span class="h-3 w-3 rounded-full bg-[#FFB629]"></span>
 					<span>云端颜色</span>
 				</div>
 			</div>
@@ -228,13 +206,14 @@
 	<div class="px-4 md:px-6">
 		{#each visibleRows as row}
 			<article class="border-b border-slate-200/75 py-7 last:border-b-0 dark:border-white/8">
-				<div class="grid gap-5 xl:grid-cols-[130px_minmax(0,1fr)_240px] xl:items-center">
+				<div class="grid gap-5 xl:grid-cols-[170px_minmax(0,1fr)] xl:items-start">
 					<div class="min-w-0">
-						<div class="text-sm font-medium tracking-wide text-slate-400 dark:text-slate-500">
-							{row.code}
-						</div>
-						<div class="mt-2 text-[24px] font-semibold tracking-tight text-slate-900 dark:text-white md:text-[34px]">
+						<div class="mt-2 text-[26px] font-semibold tracking-tight text-slate-900 dark:text-white md:text-[36px]">
 							{row.label}
+						</div>
+
+						<div class={`mt-3 text-[16px] font-medium ${getFFNClassName(row.ffnOwner)}`}>
+							{row.ffnLabel}
 						</div>
 					</div>
 
@@ -248,69 +227,20 @@
 									<div
 										class={`flex flex-col items-center justify-center border px-1.5 text-center text-slate-900 dark:text-white ${
 											head.owner === 'edge'
-												? 'border-[#F2C357] bg-[linear-gradient(180deg,#FFD566_0%,#FFC443_100%)]'
-												: 'border-[#6BC4FF] bg-[linear-gradient(180deg,#76CEFF_0%,#4EAFF8_100%)]'
+												? 'border-[#6BC4FF] bg-[linear-gradient(180deg,#76CEFF_0%,#4EAFF8_100%)]'
+												:'border-[#F2C357] bg-[linear-gradient(180deg,#FFD566_0%,#FFC443_100%)]'
 										}`}
 										style={`height:${HEAD_CELL_HEIGHT}px; border-radius:${HEAD_CELL_RADIUS}px;`}
 									>
-										<span class="text-[10px] font-semibold uppercase tracking-[0.06em]">
-											head {head.index}
+										<span class="text-[12px] font-semibold uppercase leading-none tracking-[0.06em]">
+											HEAD
 										</span>
-										<span class="mt-1 text-[9px] font-medium leading-none">
-											{head.owner === 'edge' ? '边端' : '云端'}
+										<span class="mt-1 text-[13px] font-semibold leading-none">
+											{head.index}
 										</span>
 									</div>
 								{/each}
 							</div>
-						</div>
-
-						<div class={`mt-3 text-xs font-medium ${getFFNClassName(row.ffnOwner)}`}>
-							{row.ffnLabel}
-						</div>
-					</div>
-
-					<div
-						class="border-t border-slate-200/75 pt-4 dark:border-white/8 xl:border-l xl:border-t-0 xl:pl-6 xl:pt-0"
-					>
-						<div class="flex items-center justify-between gap-3">
-							<div
-								class={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${
-									row.summaryTone === 'edge'
-										? 'bg-amber-100 text-amber-700 dark:bg-amber-300/10 dark:text-amber-300'
-										: row.summaryTone === 'cloud'
-											? 'bg-sky-100 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300'
-											: 'bg-violet-100 text-violet-700 dark:bg-violet-400/10 dark:text-violet-300'
-								}`}
-							>
-								{row.summaryLabel}
-							</div>
-
-							<div class="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-								<span class="inline-flex items-center gap-1">
-									<span class="h-2.5 w-2.5 rounded-full bg-[#FFB629]"></span>
-									边端
-								</span>
-								<span class="inline-flex items-center gap-1">
-									<span class="h-2.5 w-2.5 rounded-full bg-[#45B4FF]"></span>
-									云端
-								</span>
-							</div>
-						</div>
-
-						<div class="relative mt-4 h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/8">
-							<div
-								class="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,#FFC443_0%,#FFB629_100%)]"
-								style={`width:${(row.edgeHeads / HEADS_PER_LAYER) * 100}%`}
-							></div>
-							<div
-								class="absolute inset-y-0 right-0 rounded-full bg-[linear-gradient(90deg,#53B8FF_0%,#3AA3F5_100%)]"
-								style={`width:${(row.cloudHeads / HEADS_PER_LAYER) * 100}%`}
-							></div>
-						</div>
-
-						<div class="mt-4 space-y-1.5 text-xs text-slate-500 dark:text-slate-400">
-							<div>Heads: 边端 {row.edgeHeads} / 云端 {row.cloudHeads}</div>
-							<div class={getFFNClassName(row.ffnOwner)}>{row.ffnLabel}</div>
 						</div>
 					</div>
 				</div>
@@ -321,7 +251,7 @@
 	<div
 		class="flex flex-col gap-3 border-t border-slate-200/80 px-4 py-4 text-sm text-slate-500 dark:border-white/8 dark:text-slate-400 md:px-6 lg:flex-row lg:items-center lg:justify-between"
 	>
-		<div>每页展示 6 层，逐层查看 head 分配和 FFN 落点；后续接真实接口时可直接替换成后端返回的层级数据。</div>
+		<div>每页展示 6 层，逐层查看 head 分配和 FFN 落点；当前版本为展示版布局。</div>
 
 		<div class="flex items-center gap-3 self-end lg:self-auto">
 			<button

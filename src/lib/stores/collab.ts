@@ -80,6 +80,7 @@ export interface CollabState {
 	enabled: boolean;
 	mode: 'single' | 'edge_cloud';
 	ribbonExpanded: boolean;
+	ribbonManuallyCollapsed: boolean;
 	phase: CollabPhase;
 	overallProgress: number;
 
@@ -139,7 +140,6 @@ const resolveEdgeDeviceIp = () => {
 	if (runtimeHost && isIpv4(runtimeHost) && runtimeHost !== '127.0.0.1') {
 		return runtimeHost;
 	}
-
 	return '';
 };
 
@@ -158,6 +158,7 @@ const resolveApiBase = () => {
 	const base = `${protocol}//${hostname}:8010`;
 	return base.endsWith('/api/v1') ? base : `${base}/api/v1`;
 };
+
 const API_BASE = resolveApiBase();
 
 const USE_MOCK_CLOUD_API = (import.meta.env.VITE_USE_MOCK_CLOUD_API ?? 'true') === 'true';
@@ -347,6 +348,7 @@ const initialState: CollabState = {
 	enabled: false,
 	mode: 'single',
 	ribbonExpanded: false,
+	ribbonManuallyCollapsed: false,
 	phase: 'idle',
 	overallProgress: 0,
 
@@ -384,17 +386,9 @@ const initialState: CollabState = {
 
 export const collabState = writable<CollabState>({ ...initialState });
 
-let timers: number[] = [];
 let pollTimer: number | null = null;
-
 const strategyLoadedTaskIds = new Set<string>();
 const strategyLoadingTaskIds = new Set<string>();
-
-const clearTimers = () => {
-	if (!isBrowser) return;
-	timers.forEach((id) => window.clearTimeout(id));
-	timers = [];
-};
 
 export const stopTaskPolling = () => {
 	if (!isBrowser || pollTimer === null) return;
@@ -403,7 +397,6 @@ export const stopTaskPolling = () => {
 };
 
 export const resetCollabState = () => {
-	clearTimers();
 	stopTaskPolling();
 	strategyLoadedTaskIds.clear();
 	strategyLoadingTaskIds.clear();
@@ -415,11 +408,23 @@ export const resetCollabState = () => {
 };
 
 export const setCollabRibbonExpanded = (expanded: boolean) => {
-	collabState.update((s) => ({ ...s, ribbonExpanded: expanded }));
+	collabState.update((s) => ({
+		...s,
+		ribbonExpanded: expanded,
+		ribbonManuallyCollapsed: !expanded
+	}));
 };
 
 export const toggleCollabRibbon = () => {
-	collabState.update((s) => ({ ...s, ribbonExpanded: !s.ribbonExpanded }));
+	collabState.update((s) => {
+		const expanded = !s.ribbonExpanded;
+
+		return {
+			...s,
+			ribbonExpanded: expanded,
+			ribbonManuallyCollapsed: !expanded
+		};
+	});
 };
 
 export const clearSession = () => {
@@ -430,7 +435,6 @@ export const hasStoredSession = () => {
 	return Boolean(getSessionId());
 };
 
-// 为了尽量不影响其他文件中的旧引用，保留兼容导出
 export const clearCloudToken = () => {
 	clearSession();
 };
@@ -509,7 +513,8 @@ export const applyTaskToStore = (task: BackendTask) => {
 		...s,
 		enabled: true,
 		mode: 'edge_cloud',
-		ribbonExpanded: task.status === 'completed' ? false : true,
+		ribbonExpanded: task.status === 'completed' ? false : !s.ribbonManuallyCollapsed,
+		ribbonManuallyCollapsed: task.status === 'completed' ? false : s.ribbonManuallyCollapsed,
 		phase: inferUiPhase(task),
 		overallProgress: clamp(task.overall_progress ?? 0, 0, 100),
 		token: getOpenWebUIToken(),
@@ -580,10 +585,6 @@ export const applyStrategyToStore = (strategyData: TaskStrategyResponse) => {
 		}
 	}));
 };
-
-/* =========================
-   Mock API
-   ========================= */
 
 const mockTaskStore = new Map<
 	string,
@@ -794,10 +795,6 @@ const mockGetTaskStrategy = async (taskId: string): Promise<TaskStrategyResponse
 	};
 };
 
-/* =========================
-   Real API / unified exports
-   ========================= */
-
 export const initSession = async (): Promise<SessionInitResponse> => {
 	if (USE_MOCK_CLOUD_API) {
 		return mockInitSession();
@@ -992,7 +989,6 @@ export const startRealCollabPreparation = async (
 		edgeStorageLimitGb?: number;
 	}
 ) => {
-	clearTimers();
 	stopTaskPolling();
 	strategyLoadedTaskIds.clear();
 	strategyLoadingTaskIds.clear();
@@ -1006,7 +1002,6 @@ export const startRealCollabPreparation = async (
 		totalLayers
 	});
 
-	// 新流程：先初始化 session，再发起调度
 	const session = await initSession();
 	const task = await triggerScheduleTask(modelType);
 
@@ -1015,6 +1010,7 @@ export const startRealCollabPreparation = async (
 		enabled: true,
 		mode: 'edge_cloud',
 		ribbonExpanded: true,
+		ribbonManuallyCollapsed: false,
 		phase: 'planning',
 		overallProgress: 0,
 		token: getOpenWebUIToken(),
