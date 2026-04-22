@@ -97,6 +97,7 @@
 	import MessageInput from '$lib/components/chat/MessageInput.svelte';
 	import Messages from '$lib/components/chat/Messages.svelte';
 	import Navbar from '$lib/components/chat/Navbar.svelte';
+	import EncryptedMirrorPanel from '$lib/components/chat/EncryptedMirrorPanel.svelte';
 
 	import ChatControls from './ChatControls.svelte';
 	import EventConfirmDialog from '../common/ConfirmDialog.svelte';
@@ -116,8 +117,7 @@
 		initSession,
 		startRealCollabPreparation,
 		resetCollabState
-} from '$lib/stores/collab';
-
+	} from '$lib/stores/collab';
 
 	export let chatIdProp = '';
 
@@ -153,6 +153,13 @@
 		selectedModelIds = selectedModels;
 	}
 
+	$: loadingCardVisible = $collabState.enabled && $collabState.ribbonExpanded;
+
+	$: encryptedMirrorModelLabel =
+		atSelectedModel?.name ??
+		$models.find((m) => m.id === selectedModels[0])?.name ??
+		$WEBUI_NAME;
+
 	let selectedToolIds = [];
 	let selectedFilterIds = [];
 	let pendingOAuthTools = [];
@@ -183,131 +190,132 @@
 	let files = [];
 	let params = {};
 
+	// 默认收起
+	let encryptedMirrorOpen = false;
+
 	$: if (chatIdProp) {
 		navigateHandler();
 	}
 
+	const isEdgeCloudModelId = (modelId: string = '') => {
+		if (!modelId) return false;
 
+		const model = $models.find((m) => m.id === modelId);
 
-const isEdgeCloudModelId = (modelId: string = '') => {
-	if (!modelId) return false;
+		return Boolean(model?.info?.meta?.collab_enabled ?? true);
+	};
 
-	const model = $models.find((m) => m.id === modelId);
+	const resolveBackendModelType = (modelId: string = ''): string | null => {
+		return modelId || null;
+	};
 
-	return Boolean(model?.info?.meta?.collab_enabled ?? true);
-};
+	let collabPreparedModelId = '';
 
-const resolveBackendModelType = (modelId: string = ''): string | null => {
-	return modelId || null;
-};
+	let collabSelectionTriggering = false;
+	let suppressNextCollabAutoTrigger = false;
 
-let collabPreparedModelId = '';
+	$: {
+		const primaryModelId =
+			atSelectedModel?.id ??
+			selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+			'';
 
-let collabSelectionTriggering = false;
-
-$: {
-	const primaryModelId =
-		atSelectedModel?.id ??
-		selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
-		'';
-
-	// 注意：不要因为选择器短暂给了空值，就立刻 reset
-	// 否则“重新点击同一个协同模型”时，状态会被清掉
-	if (!primaryModelId) {
-		// 忽略 transient empty state
-	} else if (!isEdgeCloudModelId(primaryModelId) && $collabState.enabled) {
-		resetCollabState();
-		collabPreparedModelId = '';
-	} else if (
-		collabPreparedModelId &&
-		primaryModelId !== collabPreparedModelId &&
-		$collabState.enabled
-	) {
-		resetCollabState();
-		collabPreparedModelId = '';
-	}
-}
-
-const triggerCollabOnModelSelect = async () => {
-	const primaryModelId =
-		atSelectedModel?.id ??
-		selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
-		'';
-
-	if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
-		return;
+		if (!primaryModelId) {
+		} else if (!isEdgeCloudModelId(primaryModelId) && $collabState.enabled) {
+			resetCollabState();
+			collabPreparedModelId = '';
+		} else if (
+			collabPreparedModelId &&
+			primaryModelId !== collabPreparedModelId &&
+			$collabState.enabled
+		) {
+			resetCollabState();
+			collabPreparedModelId = '';
+		}
 	}
 
-	if (collabSelectionTriggering) {
-		return;
-	}
-
-	// 已经是这个模型，而且已加载完成/已准备，就不要重复触发
-	if (
-		$collabState.enabled &&
-		$collabState.backendStatus !== 'failed' &&
-		collabPreparedModelId === primaryModelId
-	) {
-		return;
-	}
-
-	try {
-		collabSelectionTriggering = true;
-		await ensureCollabReadyForSelectedModel();
-	} finally {
-		collabSelectionTriggering = false;
-	}
-};
-const ensureCollabReadyForSelectedModel = async () => {
-
-	const primaryModelId =
-		atSelectedModel?.id ??
-		selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
-		'';
-
-	if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
-		return true;
-	}
-
-	// 当前模型已经准备过，并且不是失败态，就不重复触发
-	if (
-		$collabState.enabled &&
-		$collabState.backendStatus !== 'failed' &&
-		collabPreparedModelId === primaryModelId
-	) {
-		return true;
-	}
-
-	const backendModelType = resolveBackendModelType(primaryModelId);
-
-	try {
-		if (!hasStoredCloudToken()) {
-			await initSession();
+	const triggerCollabOnModelSelect = async () => {
+		if (suppressNextCollabAutoTrigger) {
+			return;
 		}
 
-		const selectedModel = $models.find((m) => m.id === primaryModelId);
+		const primaryModelId =
+			atSelectedModel?.id ??
+			selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+			'';
 
-		await startRealCollabPreparation(backendModelType, {
-			edgeModel: 'Qwen-7B',
-			cloudModel: selectedModel?.name ?? selectedModel?.id ?? primaryModelId,
-			edgeDevice: 'Edge-A',
-			cloudDevice: 'Cloud-B',
-			cutLayer: 16,
-			totalLayers: 32,
-			strategy: '待计算'
-		});
+		if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
+			return;
+		}
 
-		collabPreparedModelId = primaryModelId;
-		toast.success('协同任务已提交，正在获取加载进度');
-		return true;
-	} catch (err) {
-		const message = err instanceof Error ? err.message : '协同任务启动失败';
-		toast.error(message);
-		resetCollabState();
-		collabPreparedModelId = '';
-		return false;
-	}
-};
+		if (collabSelectionTriggering) {
+			return;
+		}
+
+		if (
+			$collabState.enabled &&
+			$collabState.backendStatus !== 'failed' &&
+			collabPreparedModelId === primaryModelId
+		) {
+			return;
+		}
+
+		try {
+			collabSelectionTriggering = true;
+			await ensureCollabReadyForSelectedModel();
+		} finally {
+			collabSelectionTriggering = false;
+		}
+	};
+
+	const ensureCollabReadyForSelectedModel = async () => {
+		const primaryModelId =
+			atSelectedModel?.id ??
+			selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+			'';
+
+		if (!primaryModelId || !isEdgeCloudModelId(primaryModelId)) {
+			return true;
+		}
+
+		if (
+			$collabState.enabled &&
+			$collabState.backendStatus !== 'failed' &&
+			collabPreparedModelId === primaryModelId
+		) {
+			return true;
+		}
+
+		const backendModelType = resolveBackendModelType(primaryModelId);
+
+		try {
+			if (!hasStoredCloudToken()) {
+				await initSession();
+			}
+
+			const selectedModel = $models.find((m) => m.id === primaryModelId);
+
+			await startRealCollabPreparation(backendModelType, {
+				edgeModel: 'Qwen-7B',
+				cloudModel: selectedModel?.name ?? selectedModel?.id ?? primaryModelId,
+				edgeDevice: 'Edge-A',
+				cloudDevice: 'Cloud-B',
+				cutLayer: 16,
+				totalLayers: 32,
+				strategy: '待计算'
+			});
+
+			collabPreparedModelId = primaryModelId;
+			toast.success('协同任务已提交，正在获取加载进度');
+			return true;
+		} catch (err) {
+			const message = err instanceof Error ? err.message : '协同任务启动失败';
+			toast.error(message);
+			resetCollabState();
+			collabPreparedModelId = '';
+			return false;
+		}
+	};
 
 	const navigateHandler = async () => {
 		loading = true;
@@ -332,7 +340,6 @@ const ensureCollabReadyForSelectedModel = async () => {
 
 			await tick();
 
-			// Process any queued requests if the chat is idle
 			const lastMessage = history.currentId ? history.messages[history.currentId] : null;
 			const isIdle = !lastMessage || lastMessage.role !== 'assistant' || lastMessage.done;
 			if (isIdle) {
@@ -368,7 +375,6 @@ const ensureCollabReadyForSelectedModel = async () => {
 		const { type, data } = e;
 
 		if (type === 'prompt') {
-			// Handle prompt selection
 			messageInput?.setText(data, async () => {
 				if (!($settings?.insertSuggestionPrompt ?? false)) {
 					await tick();
@@ -395,27 +401,31 @@ const ensureCollabReadyForSelectedModel = async () => {
 		console.log('saveSessionSelectedModels', selectedModels, sessionStorage.selectedModels);
 	};
 
-let oldSelectedModelIds = [''];
+	let oldSelectedModelIds = [''];
 
-$: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
-	void onSelectedModelIdsChange();
-}
+	$: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds)) {
+		void onSelectedModelIdsChange();
+	}
 
 	const onSelectedModelIdsChange = async () => {
 		const previousModelId =
-			oldSelectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ?? '';
+			oldSelectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+			'';
 		const nextModelId =
-			selectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ?? '';
+			selectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+			'';
 
 		resetInput();
 		oldSelectedModelIds = structuredClone(selectedModelIds);
 
-		// 选择器打开/重选时可能会短暂变空，这里直接忽略
 		if (!nextModelId) {
 			return;
 		}
 
-		// 如果还是同一个协同模型，并且当前已经准备好了，就不要重置，也不要重触发
+		if (suppressNextCollabAutoTrigger) {
+			return;
+		}
+
 		if (
 			nextModelId === previousModelId &&
 			nextModelId === collabPreparedModelId &&
@@ -454,7 +464,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 		const model = atSelectedModel ?? $models.find((m) => m.id === selectedModels[0]);
 		if (model) {
-			// Set Default Tools
 			if (model?.info?.meta?.toolIds) {
 				const defaultIds = [
 					...new Set(
@@ -462,7 +471,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 					)
 				];
 
-				// Separate unauthenticated OAuth tools
 				const unauthed = [];
 				const authed = [];
 				for (const id of defaultIds) {
@@ -485,14 +493,12 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				selectedToolIds = selectedToolIds.filter((id) => !id.startsWith('direct_server:'));
 			}
 
-			// Set Default Filters (Toggleable only)
 			if (model?.info?.meta?.defaultFilterIds) {
 				selectedFilterIds = model.info.meta.defaultFilterIds.filter((id) =>
 					model?.filters?.find((f) => f.id === id)
 				);
 			}
 
-			// Set Default Features
 			if (model?.info?.meta?.defaultFeatureIds) {
 				if (
 					model.info?.meta?.capabilities?.['image_generation'] &&
@@ -591,7 +597,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				} else if (type === 'chat:tasks:cancel') {
 					if (event.message_id === history.currentId) {
 						taskIds = null;
-						// Set all response messages to done
 						for (const messageId of history.messages[message.parentId].childrenIds) {
 							history.messages[messageId].done = true;
 						}
@@ -608,7 +613,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				} else if (type === 'chat:message:embeds' || type === 'embeds') {
 					message.embeds = data.embeds;
 
-					// Auto-scroll to the embed once it's rendered in the DOM
 					await tick();
 					setTimeout(() => {
 						const embedEl = document.getElementById(`${event.message_id}-embeds-container`);
@@ -625,7 +629,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 						scrollToBottom('smooth');
 					}
 				} else if (type === 'chat:message:favorite') {
-					// Update message favorite status
 					message.favorite = data.favorite;
 				} else if (type === 'chat:title') {
 					chatTitle.set(data);
@@ -636,7 +639,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 					allTags.set(await getAllTags(localStorage.token));
 				} else if (type === 'source' || type === 'citation') {
 					if (data?.type === 'code_execution') {
-						// Code execution; update existing code execution by ID, or add new one.
 						if (!message?.code_executions) {
 							message.code_executions = [];
 						}
@@ -653,7 +655,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 						message.code_executions = message.code_executions;
 					} else {
-						// Regular source.
 						if (message?.sources) {
 							message.sources.push(data);
 						} else {
@@ -685,9 +686,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 					eventCallback = cb;
 
 					try {
-						// Use Function constructor to evaluate code in a safer way
 						const asyncFunction = new Function(`return (async () => { ${data.code} })()`);
-						const result = await asyncFunction(); // Await the result of the async function
+						const result = await asyncFunction();
 
 						if (cb) {
 							cb(result);
@@ -714,9 +714,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 				history.messages[event.message_id] = message;
 			}
-		} else {
-			// Non-active chat completion: queue stays in the global store.
-			// navigateHandler will process it when the user returns to that chat.
 		}
 	};
 
@@ -727,10 +724,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		const isSameOrigin = event.origin === window.origin;
 		const type = event.data?.type;
 
-		// Prompt-related message types only submit text to the chat input —
-		// functionally equivalent to the user typing.  When same-origin is
-		// enabled they go through immediately.  When it is disabled (opaque
-		// origin) we show a confirmation dialog so the user stays in control.
 		const iframePromptTypes = ['input:prompt', 'input:prompt:submit', 'action:submit'];
 
 		if (!isSameOrigin && !iframePromptTypes.includes(type)) {
@@ -765,7 +758,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 					await tick();
 					submitPrompt(event.data.text);
 				} else {
-					// Cross-origin: ask user to confirm before submitting
 					eventConfirmationInput = false;
 					eventConfirmationTitle = $i18n.t('Confirm Prompt from Embed');
 					eventConfirmationMessage = event.data.text;
@@ -787,7 +779,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			selectedModels.filter((modelId) => modelId !== '').length > 0 &&
 			JSON.stringify($selectedFolder?.data?.model_ids) !== JSON.stringify(selectedModels)
 		) {
-			const res = await updateFolderById(localStorage.token, $selectedFolder.id, {
+			await updateFolderById(localStorage.token, $selectedFolder.id, {
 				data: {
 					model_ids: selectedModels
 				}
@@ -817,7 +809,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		const audioQueueInstance = new AudioQueue(document.getElementById('audioElement'));
 		audioQueue.set(audioQueueInstance);
 
-		// Restore direct terminal enabled states based on persisted selectedTerminalId
 		if ($settings?.terminalServers?.length) {
 			settings.set({
 				...$settings,
@@ -831,9 +822,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		const pageSubscribe = page.subscribe(async (p) => {
 			if (p.url.pathname === '/') {
 				await tick();
-				initNewChat({ preserveCollab: true });
+				initNewChat({ preserveCollab: true, triggerCollab: false });
 
-				// Re-fetch banners on navigation to homepage so newly configured banners appear
 				try {
 					banners.set(await getBanners(localStorage.token).catch(() => []));
 				} catch (e) {
@@ -853,9 +843,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 					} else {
 						controlPane.collapse();
 					}
-				} catch (e) {
-					// ignore
-				}
+				} catch (e) {}
 			}
 
 			if (!value) {
@@ -872,7 +860,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				JSON.stringify(selectedModels) !== JSON.stringify(folder.data.model_ids)
 			) {
 				selectedModels = folder.data.model_ids;
-
 				console.log('Set selectedModels from folder data:', selectedModels);
 			}
 		});
@@ -933,8 +920,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		};
 	});
 
-	// File upload functions
-
 	const uploadGoogleDriveFile = async (fileData) => {
 		console.log('Starting uploadGoogleDriveFile with:', {
 			id: fileData.id,
@@ -945,7 +930,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			}
 		});
 
-		// Validate input
 		if (!fileData?.id || !fileData?.name || !fileData?.url || !fileData?.headers?.Authorization) {
 			throw new Error('Invalid file data provided');
 		}
@@ -968,7 +952,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			files = [...files, fileItem];
 			console.log('Processing web file with URL:', fileData.url);
 
-			// Configure fetch options with proper headers
 			const fetchOptions = {
 				headers: {
 					Authorization: fileData.headers.Authorization,
@@ -977,7 +960,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				method: 'GET'
 			};
 
-			// Attempt to fetch the file
 			console.log('Fetching file content from Google Drive...');
 			const fileResponse = await fetch(fileData.url, fetchOptions);
 
@@ -986,11 +968,9 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				throw new Error(`Failed to fetch file (${fileResponse.status}): ${errorText}`);
 			}
 
-			// Get content type from response
 			const contentType = fileResponse.headers.get('content-type') || 'application/octet-stream';
 			console.log('Response received with content-type:', contentType);
 
-			// Convert response to blob
 			console.log('Converting response to blob...');
 			const fileBlob = await fileResponse.blob();
 
@@ -1003,7 +983,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				type: fileBlob.type || contentType
 			});
 
-			// Create File object with proper MIME type
 			const file = new File([fileBlob], fileData.name, {
 				type: fileBlob.type || contentType
 			});
@@ -1018,7 +997,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				throw new Error('Created file is empty');
 			}
 
-			// If the file is an audio file, provide the language for STT.
 			let metadata = null;
 			if (
 				(file.type.startsWith('audio/') || file.type.startsWith('video/')) &&
@@ -1029,7 +1007,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				};
 			}
 
-			// Upload file to server
 			console.log('Uploading file to server...');
 			const uploadedFile = await uploadFile(localStorage.token, file, metadata);
 
@@ -1039,7 +1016,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 			console.log('File uploaded successfully:', uploadedFile);
 
-			// Update file item with upload results
 			fileItem.status = 'uploaded';
 			fileItem.file = uploadedFile;
 			fileItem.id = uploadedFile.id;
@@ -1070,7 +1046,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			urls = [urls];
 		}
 
-		// Create file items first
 		const fileItems = urls.map((url) => ({
 			type: 'text',
 			name: url,
@@ -1081,7 +1056,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			error: ''
 		}));
 
-		// Display all items at once
 		files = [...files, ...fileItems];
 
 		for (const fileItem of fileItems) {
@@ -1150,7 +1124,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
                             <meta name="viewport" content="width=device-width, initial-scale=1.0">
 							<${''}style>
 								body {
-									background-color: white; /* Ensure the iframe has a white background */
+									background-color: white;
 								}
 
 								${group.css}
@@ -1168,7 +1142,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 						contents = [...contents, { type: 'iframe', content: renderedContent }];
 					});
 				} else {
-					// Check for SVG content
 					for (const block of codeBlocks) {
 						if (block.lang === 'svg' || (block.lang === 'xml' && block.code.includes('<svg'))) {
 							contents = [...contents, { type: 'svg', content: block.code }];
@@ -1181,11 +1154,7 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		artifactContents.set(contents);
 	};
 
-	//////////////////////////
-	// Web functions
-	//////////////////////////
-
-	const initNewChat = async ({ preserveCollab = false } = {}) => {
+	const initNewChat = async ({ preserveCollab = false, triggerCollab = true } = {}) => {
 		console.log('initNewChat');
 		if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
 			await temporaryChatEnabled.set(true);
@@ -1195,7 +1164,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			if ($temporaryChatEnabled === false) {
 				await temporaryChatEnabled.set(true);
 			} else if ($temporaryChatEnabled === null) {
-				// if set to null set to false; refer to temp chat toggle click handler
 				await temporaryChatEnabled.set(false);
 			}
 		}
@@ -1219,7 +1187,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 			if (urlModels.length === 1) {
 				if (!$models.find((m) => m.id === urlModels[0])) {
-					// Model not found; open model selector and prefill
 					const modelSelectorButton = document.getElementById('model-selector-0-button');
 					if (modelSelectorButton) {
 						modelSelectorButton.click();
@@ -1233,43 +1200,34 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 						}
 					}
 				} else {
-					// Model found; set it as selected
 					selectedModels = urlModels;
 				}
 			} else {
-				// Multiple models; set as selected
 				selectedModels = urlModels;
 			}
 
-			// Unavailable models filtering
 			selectedModels = selectedModels.filter((modelId) =>
 				$models.map((m) => m.id).includes(modelId)
 			);
 		} else {
 			if ($selectedFolder?.data?.model_ids) {
-				// Set from folder model IDs
 				selectedModels = $selectedFolder?.data?.model_ids;
 			} else {
 				if (sessionStorage.selectedModels) {
-					// Set from session storage (temporary selection)
 					selectedModels = JSON.parse(sessionStorage.selectedModels);
 					sessionStorage.removeItem('selectedModels');
 				} else {
 					if ($settings?.models) {
-						// Set from user settings
 						selectedModels = $settings?.models;
 					} else if (defaultModels && defaultModels.length > 0) {
-						// Set from default models
 						selectedModels = defaultModels;
 					}
 				}
 			}
 
-			// Unavailable & hidden models filtering
 			selectedModels = selectedModels.filter((modelId) => availableModels.includes(modelId));
 		}
 
-		// Ensure at least one model is selected
 		if (selectedModels.length === 0 || (selectedModels.length === 1 && selectedModels[0] === '')) {
 			if (availableModels.length > 0) {
 				if (defaultModels && defaultModels.length > 0) {
@@ -1280,7 +1238,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 					selectedModels.length === 0 ||
 					(selectedModels.length === 1 && selectedModels[0] === '')
 				) {
-					// Only fall back to first available model if default models didn't resolve
 					selectedModels = [availableModels?.at(0) ?? ''];
 				}
 			} else {
@@ -1352,7 +1309,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				.filter((id) => id);
 		}
 
-		// Restore tool selection after OAuth redirect
 		const pendingToolId = sessionStorage.getItem('pendingOAuthToolId');
 		if (pendingToolId) {
 			sessionStorage.removeItem('pendingOAuthToolId');
@@ -1385,7 +1341,10 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		const chatInput = document.getElementById('chat-input');
 		setTimeout(() => chatInput?.focus(), 0);
 		await tick();
-		void triggerCollabOnModelSelect();
+
+		if (triggerCollab) {
+			void triggerCollabOnModelSelect();
+		}
 	};
 
 	const loadChat = async () => {
@@ -1393,6 +1352,12 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 		if ($temporaryChatEnabled) {
 			temporaryChatEnabled.set(false);
+		}
+
+		const skipCollabReload = sessionStorage.getItem('skipCollabReload') === '1';
+		if (skipCollabReload) {
+			sessionStorage.removeItem('skipCollabReload');
+			suppressNextCollabAutoTrigger = true;
 		}
 
 		chat = await getChatById(localStorage.token, $chatId).catch(async (error) => {
@@ -1432,7 +1397,24 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				chatFiles = chatContent?.files ?? [];
 
 				autoScroll = true;
-				void triggerCollabOnModelSelect();
+
+				const primaryModelId =
+					atSelectedModel?.id ??
+					selectedModels.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
+					'';
+
+				// 关键修复：
+				// 如果这次是从“逐层分块页 -> 返回对话”回来，
+				// 不仅要跳过自动触发，还要把本地 preparedModelId 恢复出来，
+				// 否则组件重建后它会变成 ''，后续又会被当成未准备状态。
+				if (skipCollabReload) {
+					if (primaryModelId && $collabState.enabled) {
+						collabPreparedModelId = primaryModelId;
+					}
+				} else {
+					void triggerCollabOnModelSelect();
+				}
+
 				await tick();
 
 				if (history.currentId) {
@@ -1453,13 +1435,25 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 				await tick();
 
+				if (skipCollabReload) {
+					// 等本次页面恢复流程完全走完，再把自动抑制解除
+					await tick();
+					suppressNextCollabAutoTrigger = false;
+				}
+
 				return true;
 			} else {
+				if (skipCollabReload) {
+					suppressNextCollabAutoTrigger = false;
+				}
 				return null;
 			}
 		}
-	};
 
+		if (skipCollabReload) {
+			suppressNextCollabAutoTrigger = false;
+		}
+	};
 	const scrollToBottom = async (behavior = 'auto') => {
 		await tick();
 		if (messagesContainerElement) {
@@ -1523,10 +1517,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		});
 
 		if (res !== null && res.messages) {
-			// Update chat history with the new messages
 			for (const message of res.messages) {
 				if (message?.id) {
-					// Add null check for message and message.id
 					history.messages[message.id] = {
 						...history.messages[message.id],
 						...(history.messages[message.id].content !== message.content
@@ -1583,7 +1575,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		});
 
 		if (res !== null && res.messages) {
-			// Update chat history with the new messages
 			for (const message of res.messages) {
 				history.messages[message.id] = {
 					...history.messages[message.id],
@@ -1752,7 +1743,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 	const chatCompletionEventHandler = async (data, message, chatId) => {
 		const { id, done, choices, content, output, sources, selected_model_id, error, usage } = data;
 
-		// Store raw OR-aligned output items from backend
 		if (output) {
 			message.output = output;
 		}
@@ -1767,10 +1757,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 
 		if (choices) {
 			if (choices[0]?.message?.content) {
-				// Non-stream response
 				message.content += choices[0]?.message?.content;
 			} else {
-				// Stream response
 				let value = choices[0]?.delta?.content ?? '';
 				if (message.content == '' && value == '\n') {
 					console.log('Empty response');
@@ -1781,7 +1769,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 						navigator.vibrate(5);
 					}
 
-					// Emit chat event for TTS (only when call overlay is active)
 					if ($showCallOverlay) {
 						const messageContentParts = getMessageContentParts(
 							removeAllDetails(message.content),
@@ -1789,7 +1776,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 						);
 						messageContentParts.pop();
 
-						// dispatch only last sentence and make sure it hasn't been dispatched before
 						if (
 							messageContentParts.length > 0 &&
 							messageContentParts[messageContentParts.length - 1] !== message.lastSentence
@@ -1810,14 +1796,12 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 		}
 
 		if (content) {
-			// REALTIME_CHAT_SAVE is disabled
 			message.content = content;
 
 			if (navigator.vibrate && ($settings?.hapticFeedback ?? false)) {
 				navigator.vibrate(5);
 			}
 
-			// Emit chat event for TTS (only when call overlay is active)
 			if ($showCallOverlay) {
 				const messageContentParts = getMessageContentParts(
 					removeAllDetails(message.content),
@@ -1825,7 +1809,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				);
 				messageContentParts.pop();
 
-				// dispatch only last sentence and make sure it hasn't been dispatched before
 				if (
 					messageContentParts.length > 0 &&
 					messageContentParts[messageContentParts.length - 1] !== message.lastSentence
@@ -1866,7 +1849,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				document.getElementById(`speak-button-${message.id}`)?.click();
 			}
 
-			// Emit chat event for TTS (only when call overlay is active)
 			if ($showCallOverlay) {
 				let lastMessageContentPart =
 					getMessageContentParts(
@@ -1897,17 +1879,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 				scrollToBottom();
 			}
 
-			// Fire-and-forget: run chatCompletedHandler for background work
-			// (outlet filters, chat save, title gen, follow-ups, tags)
-			// without blocking the user from sending new messages.
-			chatCompletedHandler(
-				chatId,
-				message.model,
-				message.id,
-				createMessagesList(history, message.id)
-			);
+			chatCompletedHandler(chatId, message.model, message.id, createMessagesList(history, message.id));
 
-			// Process next queued request if any
 			await processNextInQueue(chatId);
 		}
 
@@ -1918,10 +1891,6 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			scheduleScrollToBottom();
 		}
 	};
-
-	//////////////////////////
-	// Chat functions
-	//////////////////////////
 
 	const submitPrompt = async (userPrompt, { _raw = false } = {}) => {
 		console.log('submitPrompt', userPrompt, $chatId);
@@ -1969,26 +1938,21 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			return;
 		}
 
-		// Check if the assistant is still generating the main response
-		// (don't block on background tasks like title gen, follow-ups, tags)
 		const lastMessage = history.currentId ? history.messages[history.currentId] : null;
 		const isGenerating = lastMessage && lastMessage.role === 'assistant' && !lastMessage.done;
 
 		if (isGenerating) {
 			if ($settings?.enableMessageQueue ?? true) {
-				// Enqueue the request
 				const _files = structuredClone(files);
 				chatRequestQueues.update((q) => ({
 					...q,
 					[$chatId]: [...(q[$chatId] ?? []), { id: uuidv4(), prompt: userPrompt, files: _files }]
 				}));
-				// Clear input
 				messageInput?.setText('');
 				prompt = '';
 				files = [];
 				return;
 			} else {
-				// Interrupt: stop current generation and proceed
 				await stopResponse();
 				await tick();
 			}
@@ -2008,8 +1972,8 @@ $: if (JSON.stringify(selectedModelIds) !== JSON.stringify(oldSelectedModelIds))
 			return;
 		}
 
-messageInput?.setText('');
-prompt = '';
+		messageInput?.setText('');
+		prompt = '';
 
 		const messages = createMessagesList(history, history.currentId);
 		const _files = structuredClone(files);
@@ -2022,7 +1986,6 @@ prompt = '';
 			)
 		);
 		chatFiles = chatFiles.filter(
-			// Remove duplicates
 			(item, index, array) =>
 				array.findIndex((i) => JSON.stringify(i) === JSON.stringify(item)) === index
 		);
@@ -2030,7 +1993,6 @@ prompt = '';
 		files = [];
 		messageInput?.setText('');
 
-		// Create user message
 		let userMessageId = uuidv4();
 		let userMessage = {
 			id: userMessageId,
@@ -2039,20 +2001,17 @@ prompt = '';
 			role: 'user',
 			content: userPrompt,
 			files: _files.length > 0 ? _files : undefined,
-			timestamp: Math.floor(Date.now() / 1000), // Unix epoch
+			timestamp: Math.floor(Date.now() / 1000),
 			models: selectedModels
 		};
 
-		// Add message to history and Set currentId to messageId
 		history.messages[userMessageId] = userMessage;
 		history.currentId = userMessageId;
 
-		// Append messageId to childrenIds of parent message
 		if (messages.length !== 0) {
 			history.messages[messages.at(-1).id].childrenIds.push(userMessageId);
 		}
 
-		// focus on chat input
 		const chatInput = document.getElementById('chat-input');
 		chatInput?.focus();
 
@@ -2084,14 +2043,12 @@ prompt = '';
 		_history = structuredClone(_history);
 
 		const responseMessageIds: Record<PropertyKey, string> = {};
-		// If modelId is provided, use it, else use selected model
 		let selectedModelIds = modelId
 			? [modelId]
 			: atSelectedModel !== undefined
 				? [atSelectedModel.id]
 				: selectedModels;
 
-		// Create response messages for each selected model
 		for (const [_modelIdx, modelId] of selectedModelIds.entries()) {
 			const model = $models.filter((m) => m.id === modelId).at(0);
 
@@ -2106,16 +2063,13 @@ prompt = '';
 					model: model.id,
 					modelName: model.name ?? model.id,
 					modelIdx: modelIdx ? modelIdx : _modelIdx,
-					timestamp: Math.floor(Date.now() / 1000) // Unix epoch
+					timestamp: Math.floor(Date.now() / 1000)
 				};
 
-				// Add message to history and Set currentId to messageId
 				history.messages[responseMessageId] = responseMessage;
 				history.currentId = responseMessageId;
 
-				// Append messageId to childrenIds of parent message
 				if (parentId !== null && history.messages[parentId]) {
-					// Add null check before accessing childrenIds
 					history.messages[parentId].childrenIds = [
 						...history.messages[parentId].childrenIds,
 						responseMessageId
@@ -2127,7 +2081,6 @@ prompt = '';
 		}
 		history = history;
 
-		// Create new chat if newChat is true and first user message
 		if (newChat && _history.messages[_history.currentId].parentId === null) {
 			_chatId = await initChatHandler(_history);
 		}
@@ -2135,7 +2088,6 @@ prompt = '';
 		await tick();
 
 		_history = structuredClone(history);
-		// Save chat after all messages have been created
 		await saveChatHandler(_chatId, _history);
 
 		await Promise.all(
@@ -2144,8 +2096,6 @@ prompt = '';
 				const model = $models.filter((m) => m.id === modelId).at(0);
 
 				if (model) {
-					// If there are image files, check if model is vision capable
-					// Skip this check if image generation is enabled, as images may be for editing or are generated outputs in the history
 					const hasImages = createMessagesList(_history, parentId).some((message) =>
 						message.files?.some(
 							(file) => file.type === 'image' || (file?.content_type ?? '').startsWith('image/')
@@ -2247,7 +2197,6 @@ prompt = '';
 			.filter((message) => message.files)
 			.flatMap((message) => message.files);
 
-		// Filter chatFiles to only include files that are in the chatMessageFiles
 		chatFiles = chatFiles.filter((item) => {
 			const fileExists = chatMessageFiles.some((messageFile) => messageFile.id === item.id);
 			return fileExists;
@@ -2261,7 +2210,6 @@ prompt = '';
 					(item.type === 'file' && !(item?.content_type ?? '').startsWith('image/'))
 			)
 		);
-		// Remove duplicates
 		files = files.filter(
 			(item, index, array) =>
 				array.findIndex((i) => JSON.stringify(i) === JSON.stringify(item)) === index
@@ -2301,7 +2249,6 @@ prompt = '';
 			..._messages.map((message) => ({
 				...message,
 				content: processDetails(message.content),
-				// Include output for temp chats (backend will use it and strip before LLM)
 				...(message.output ? { output: message.output } : {})
 			}))
 		].filter((message) => message);
@@ -2314,7 +2261,6 @@ prompt = '';
 
 				return {
 					role: message.role,
-					// Preserve output items so backend can reconstruct tool_calls/tool-role messages (temp chats)
 					...(message.output ? { output: message.output } : {}),
 					...(message.role === 'user' && imageFiles.length > 0
 						? {
@@ -2344,7 +2290,6 @@ prompt = '';
 		for (const toolId of selectedToolIds) {
 			if (toolId.startsWith('direct_server:')) {
 				let serverId = toolId.replace('direct_server:', '');
-				// Check if serverId is a number
 				if (!isNaN(parseInt(serverId))) {
 					toolServerIds.push(parseInt(serverId));
 				} else {
@@ -2355,7 +2300,6 @@ prompt = '';
 			}
 		}
 
-		// Parse skill mentions (<$skillId|label>) from user messages
 		const skillMentionRegex = /<\$([^|>]+)\|?[^>]*>/g;
 		const skillIds = [];
 		for (const message of messages) {
@@ -2368,7 +2312,6 @@ prompt = '';
 			}
 		}
 
-		// Strip skill mentions from message content
 		if (skillIds.length > 0) {
 			messages = messages.map((message) => {
 				if (typeof message.content === 'string') {
@@ -2390,7 +2333,6 @@ prompt = '';
 			});
 		}
 
-		// Use the user-selected terminal from the dropdown
 		const activeTerminalId = $selectedTerminalId ?? null;
 
 		const res = await generateOpenAIChatCompletion(
@@ -2415,7 +2357,6 @@ prompt = '';
 					...($toolServers ?? []).filter(
 						(server, idx) => toolServerIds.includes(idx) || toolServerIds.includes(server?.id)
 					),
-					// Direct terminal servers — always included when enabled (not routed through selectedToolIds)
 					...($terminalServers ?? []).filter((t) => !t.id)
 				],
 				features: getFeatures(),
@@ -2448,7 +2389,7 @@ prompt = '';
 								tags_generation: $settings?.autoTags ?? true
 							}
 						: {}),
-					follow_up_generation: $settings?.autoFollowUps ?? true
+					follow_up_generation: false
 				},
 
 				...(stream && (model.info?.meta?.capabilities?.usage ?? false)
@@ -2513,11 +2454,9 @@ prompt = '';
 
 		console.error(innerError);
 		if ('detail' in innerError) {
-			// FastAPI error
 			toast.error(innerError.detail);
 			errorMessage = innerError.detail;
 		} else if ('error' in innerError) {
-			// OpenAI error
 			if ('message' in innerError.error) {
 				toast.error(innerError.error.message);
 				errorMessage = innerError.error.message;
@@ -2526,7 +2465,6 @@ prompt = '';
 				errorMessage = innerError.error;
 			}
 		} else if ('message' in innerError) {
-			// OpenAI error
 			toast.error(innerError.message);
 			errorMessage = innerError.message;
 		}
@@ -2548,7 +2486,7 @@ prompt = '';
 	const stopResponse = async () => {
 		if (taskIds) {
 			for (const taskId of taskIds) {
-				const res = await stopTask(localStorage.token, taskId).catch((error) => {
+				await stopTask(localStorage.token, taskId).catch((error) => {
 					toast.error(`${error}`);
 					return null;
 				});
@@ -2557,7 +2495,6 @@ prompt = '';
 			taskIds = null;
 
 			const responseMessage = history.messages[history.currentId];
-			// Set all response messages to done
 			if (responseMessage.parentId && history.messages[responseMessage.parentId]) {
 				for (const messageId of history.messages[responseMessage.parentId].childrenIds) {
 					history.messages[messageId].done = true;
@@ -2591,7 +2528,7 @@ prompt = '';
 			role: 'user',
 			content: userPrompt,
 			models: selectedModels,
-			timestamp: Math.floor(Date.now() / 1000) // Unix epoch
+			timestamp: Math.floor(Date.now() / 1000)
 		};
 
 		if (parentId !== null) {
@@ -2642,7 +2579,6 @@ prompt = '';
 					: {}),
 				...((userMessage?.models ?? [...selectedModels]).length > 1
 					? {
-							// If multiple models are selected, use the model from the message
 							modelId: message.model,
 							modelIdx: message.modelIdx
 						}
@@ -2762,7 +2698,7 @@ prompt = '';
 
 			selectedFolder.set(null);
 		} else {
-			_chatId = `local:${$socket?.id}`; // Use socket id for temporary chat
+			_chatId = `local:${$socket?.id}`;
 			await chatId.set(_chatId);
 		}
 		await tick();
@@ -2885,7 +2821,7 @@ prompt = '';
 	id="chat-container"
 >
 	{#if !loading}
-		<div in:slide={{ duration: 50}} class="w-full h-full flex flex-col">
+		<div in:slide={{ duration: 50 }} class="w-full h-full flex flex-col">
 			{#if $selectedFolder && $selectedFolder?.meta?.background_image_url}
 				<div
 					class="absolute top-0 left-0 w-full h-full bg-cover bg-center bg-no-repeat"
@@ -2969,179 +2905,229 @@ prompt = '';
 						}}
 					/>
 
-					<div id="chat-pane" class="flex flex-col flex-auto z-10 w-full @container overflow-auto">
-						{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
-
-							{#if $collabState.enabled && $collabState.ribbonExpanded}
-								<div class="w-full max-w-[960px] shrink-0 self-center px-4 pt-2">
-									<CollabTopRibbon />
-								</div>
-							{/if}
-							<div
-								class=" pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
-								id="messages-container"
-								bind:this={messagesContainerElement}
-								on:scroll={(e) => {
-									autoScroll =
-										messagesContainerElement.scrollHeight - messagesContainerElement.scrollTop <=
-										messagesContainerElement.clientHeight + 5;
-								}}
+					<div id="chat-pane" class="relative flex flex-auto z-10 w-full min-w-0 overflow-hidden">
+						<div class="absolute right-0 top-1/2 z-30 hidden -translate-y-1/2 xl:flex">
+							<button
+								class="group flex h-14 w-10 items-center justify-center rounded-l-2xl border border-r-0 border-slate-200 bg-white/96 text-slate-700 shadow-[0_8px_24px_rgba(15,23,42,0.08)] backdrop-blur transition hover:bg-slate-50 hover:text-slate-900"
+								on:click={() => (encryptedMirrorOpen = !encryptedMirrorOpen)}
+								aria-label={encryptedMirrorOpen ? '收起密态镜像页' : '展开密态镜像页'}
+								title={encryptedMirrorOpen ? '收起密态镜像页' : '展开密态镜像页'}
 							>
-								<div class=" h-full w-full flex flex-col">
-									<Messages
-										chatId={$chatId}
-										bind:history
-										bind:autoScroll
-										bind:prompt
-										setInputText={(text) => {
-											messageInput?.setText(text);
-										}}
-										{selectedModels}
-										{atSelectedModel}
-										{sendMessage}
-										{showMessage}
-										{submitMessage}
-										{continueResponse}
-										{regenerateResponse}
-										{mergeResponses}
-										{chatActionHandler}
-										{addMessages}
-										topPadding={true}
-										bottomPadding={files.length > 0}
-										{onSelect}
-									/>
-								</div>
-							</div>
+								<span
+									class="text-lg leading-none transition-transform duration-200 {encryptedMirrorOpen ? 'rotate-180' : ''}"
+								>
+									‹
+								</span>
+							</button>
+						</div>
 
-							<div class=" pb-2 {dragged ? 'z-0' : 'z-10'}">
-
-								<MessageInput
-									bind:this={messageInput}
-									{history}
-									{taskIds}
-									{selectedModels}
-									bind:files
-									bind:prompt
-									bind:autoScroll
-									bind:selectedToolIds
-									bind:selectedFilterIds
-									bind:imageGenerationEnabled
-									bind:codeInterpreterEnabled
-									{pendingOAuthTools}
-									bind:webSearchEnabled
-									bind:atSelectedModel
-									bind:showCommands
-									bind:dragged
-									toolServers={$toolServers}
-									{generating}
-									{stopResponse}
-									{createMessagePair}
-									{onUpload}
-									messageQueue={$chatRequestQueues[$chatId] ?? []}
-									onQueueSendNow={async (id) => {
-										const queue = $chatRequestQueues[$chatId] ?? [];
-										const item = queue.find((m) => m.id === id);
-										if (item) {
-											// Remove from queue
-											chatRequestQueues.update((q) => ({
-												...q,
-												[$chatId]: queue.filter((m) => m.id !== id)
-											}));
-											// Stop current generation first
-											await stopResponse();
-											await tick();
-											// Set files and submit
-											files = item.files;
-											await tick();
-											await submitPrompt(item.prompt);
-										}
-									}}
-									onQueueEdit={(id) => {
-										const queue = $chatRequestQueues[$chatId] ?? [];
-										const item = queue.find((m) => m.id === id);
-										if (item) {
-											// Remove from queue
-											chatRequestQueues.update((q) => ({
-												...q,
-												[$chatId]: queue.filter((m) => m.id !== id)
-											}));
-											// Set files and restore prompt to input
-											files = item.files;
-											messageInput?.setText(item.prompt);
-										}
-									}}
-									onQueueDelete={(id) => {
-										const queue = $chatRequestQueues[$chatId] ?? [];
-										chatRequestQueues.update((q) => ({
-											...q,
-											[$chatId]: queue.filter((m) => m.id !== id)
-										}));
-									}}
-									onChange={(data) => {
-										if (!$temporaryChatEnabled) {
-											saveDraft(data, $chatId);
-										}
-									}}
-									on:submit={async (e) => {
-										clearDraft();
-										if (e.detail || files.length > 0) {
-											await tick();
-
-											submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-										}
-									}}
-								/>
+							<div
+								class={`flex min-w-0 min-h-0 flex-col overflow-hidden transition-all duration-300 ${
+									encryptedMirrorOpen ? 'w-1/2 border-r border-slate-200/70' : 'w-full'
+								}`}
+							>
+							{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
+								{#if $collabState.enabled && $collabState.ribbonExpanded}
+									<div
+										class={`w-full shrink-0 self-center pt-6 ${
+											encryptedMirrorOpen ? 'max-w-5xl px-4' : 'max-w-4xl px-4'
+										}`}
+									>
+										<CollabTopRibbon />
+									</div>
+								{/if}
 
 								<div
-									class="absolute bottom-1 text-xs text-gray-500 text-center line-clamp-1 right-0 left-0"
+									class="pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
+									id="messages-container"
+									bind:this={messagesContainerElement}
+									on:scroll={() => {
+										autoScroll =
+											messagesContainerElement.scrollHeight - messagesContainerElement.scrollTop <=
+											messagesContainerElement.clientHeight + 5;
+									}}
 								>
-									<!-- {$i18n.t('LLMs can make mistakes. Verify important information.')} -->
+									<div class="h-full w-full flex flex-col">
+										<div
+											class={`mx-auto w-full px-4 ${
+												encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
+											}`}
+										>
+											<Messages
+												chatId={$chatId}
+												bind:history
+												bind:autoScroll
+												bind:prompt
+												setInputText={(text) => {
+													messageInput?.setText(text);
+												}}
+												{selectedModels}
+												{atSelectedModel}
+												{sendMessage}
+												{showMessage}
+												{submitMessage}
+												{continueResponse}
+												{regenerateResponse}
+												{mergeResponses}
+												{chatActionHandler}
+												{addMessages}
+												topPadding={true}
+												bottomPadding={files.length > 0}
+												{onSelect}
+											/>
+										</div>
+									</div>
 								</div>
-							</div>
-						{:else}
-								<div class="flex min-h-0 flex-1 w-full flex-col items-center px-4 pb-4">
-<!--									<div class="w-full max-w-[960px] pt-2">-->
-<!--										<CollabTopRibbon />-->
-<!--									</div>-->
-									{#if $collabState.enabled && $collabState.ribbonExpanded}
-										<div class="w-full max-w-[960px] pt-2">
+
+								<div class="pb-2 {dragged ? 'z-0' : 'z-10'}">
+									<div
+										class={`mx-auto w-full px-4 ${
+											encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
+										}`}
+									>
+										<MessageInput
+											bind:this={messageInput}
+											{history}
+											{taskIds}
+											{selectedModels}
+											bind:files
+											bind:prompt
+											bind:autoScroll
+											bind:selectedToolIds
+											bind:selectedFilterIds
+											bind:imageGenerationEnabled
+											bind:codeInterpreterEnabled
+											{pendingOAuthTools}
+											bind:webSearchEnabled
+											bind:atSelectedModel
+											bind:showCommands
+											bind:dragged
+											toolServers={$toolServers}
+											{generating}
+											{stopResponse}
+											{createMessagePair}
+											{onUpload}
+											messageQueue={$chatRequestQueues[$chatId] ?? []}
+											onQueueSendNow={async (id) => {
+												const queue = $chatRequestQueues[$chatId] ?? [];
+												const item = queue.find((m) => m.id === id);
+												if (item) {
+													chatRequestQueues.update((q) => ({
+														...q,
+														[$chatId]: queue.filter((m) => m.id !== id)
+													}));
+													await stopResponse();
+													await tick();
+													files = item.files;
+													await tick();
+													await submitPrompt(item.prompt);
+												}
+											}}
+											onQueueEdit={(id) => {
+												const queue = $chatRequestQueues[$chatId] ?? [];
+												const item = queue.find((m) => m.id === id);
+												if (item) {
+													chatRequestQueues.update((q) => ({
+														...q,
+														[$chatId]: queue.filter((m) => m.id !== id)
+													}));
+													files = item.files;
+													messageInput?.setText(item.prompt);
+												}
+											}}
+											onQueueDelete={(id) => {
+												const queue = $chatRequestQueues[$chatId] ?? [];
+												chatRequestQueues.update((q) => ({
+													...q,
+													[$chatId]: queue.filter((m) => m.id !== id)
+												}));
+											}}
+											onChange={(data) => {
+												if (!$temporaryChatEnabled) {
+													saveDraft(data, $chatId);
+												}
+											}}
+											on:submit={async (e) => {
+												clearDraft();
+												if (e.detail || files.length > 0) {
+													await tick();
+													submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+												}
+											}}
+										/>
+									</div>
+
+									<div
+										class="absolute bottom-1 text-xs text-gray-500 text-center line-clamp-1 right-0 left-0"
+									>
+										<!-- {$i18n.t('LLMs can make mistakes. Verify important information.')} -->
+									</div>
+								</div>
+							{:else}
+								<div class="flex min-h-0 flex-1 w-full flex-col px-4 pt-6 pb-6">
+									{#if loadingCardVisible}
+										<div
+											class={`w-full shrink-0 self-center ${
+												encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
+											}`}
+										>
 											<CollabTopRibbon />
 										</div>
 									{/if}
 
-								<Placeholder
+									<div class="flex min-h-0 flex-1 w-full items-center justify-center overflow-hidden">
+										<div class="w-full max-w-[800px]">
+											<Placeholder
+												{history}
+												{selectedModels}
+												bind:messageInput
+												bind:files
+												bind:prompt
+												bind:autoScroll
+												bind:selectedToolIds
+												bind:selectedFilterIds
+												bind:imageGenerationEnabled
+												bind:codeInterpreterEnabled
+												bind:webSearchEnabled
+												bind:atSelectedModel
+												bind:showCommands
+												bind:dragged
+												{pendingOAuthTools}
+												toolServers={$toolServers}
+												{stopResponse}
+												{createMessagePair}
+												{onSelect}
+												{onUpload}
+												centeredMode={true}
+												loadingCardVisible={loadingCardVisible}
+												onChange={(data) => {
+													if (!$temporaryChatEnabled) {
+														saveDraft(data);
+													}
+												}}
+												on:submit={async (e) => {
+													clearDraft();
+													if (e.detail || files.length > 0) {
+														await tick();
+														submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+													}
+												}}
+											/>
+										</div>
+									</div>
+								</div>
+							{/if}
+						</div>
+
+						{#if encryptedMirrorOpen}
+							<div class="w-1/2 min-w-0 min-h-0 h-full overflow-y-auto">
+								<EncryptedMirrorPanel
+									chatId={$chatId}
 									{history}
 									{selectedModels}
-									bind:messageInput
-									bind:files
-									bind:prompt
-									bind:autoScroll
-									bind:selectedToolIds
-									bind:selectedFilterIds
-									bind:imageGenerationEnabled
-									bind:codeInterpreterEnabled
-									bind:webSearchEnabled
-									bind:atSelectedModel
-									bind:showCommands
-									bind:dragged
-									{pendingOAuthTools}
-									toolServers={$toolServers}
-									{stopResponse}
-									{createMessagePair}
+									{atSelectedModel}
+									modelLabel={encryptedMirrorModelLabel}
 									{onSelect}
-									{onUpload}
-									onChange={(data) => {
-										if (!$temporaryChatEnabled) {
-											saveDraft(data);
-										}
-									}}
-									on:submit={async (e) => {
-										clearDraft();
-										if (e.detail || files.length > 0) {
-											await tick();
-											submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-										}
-									}}
 								/>
 							</div>
 						{/if}

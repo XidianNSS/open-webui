@@ -63,6 +63,12 @@
 
 	export let dragged = false;
 
+	export let showInput = true;
+	export let showSuggestions = true;
+
+	export let loadingCardVisible = false;
+	export let centeredMode = false;
+
 	let models = [];
 	let selectedModelIdx = 0;
 
@@ -72,8 +78,16 @@
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
 </script>
-
-<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">
+<div
+	class={`m-auto w-full max-w-6xl px-2 @2xl:px-20 text-center transition-all duration-300 ease-in-out ${
+		centeredMode
+			? loadingCardVisible
+				? 'translate-y-18 py-8'
+				: 'translate-y-0 py-0'
+			: 'translate-y-6 py-24'
+	}`}
+>
+<!--<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">-->
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
@@ -187,8 +201,7 @@
 									By
 									{#if models[selectedModelIdx]?.info?.meta?.user.community}
 										<a
-											href="https://openwebui.com/m/{models[selectedModelIdx]?.info?.meta?.user
-												.username}"
+											href="https://openwebui.com/m/{models[selectedModelIdx]?.info?.meta?.user.username}"
 											>{models[selectedModelIdx]?.info?.meta?.user.name
 												? models[selectedModelIdx]?.info?.meta?.user.name
 												: `@${models[selectedModelIdx]?.info?.meta?.user.username}`}</a
@@ -203,34 +216,36 @@
 				</div>
 			{/if}
 
-			<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
-				<MessageInput
-					bind:this={messageInput}
-					{history}
-					{selectedModels}
-					bind:files
-					bind:prompt
-					bind:autoScroll
-					bind:selectedToolIds
-					bind:selectedFilterIds
-					bind:imageGenerationEnabled
-					bind:codeInterpreterEnabled
-					bind:webSearchEnabled
-					bind:atSelectedModel
-					bind:showCommands
-					bind:dragged
-					{pendingOAuthTools}
-					{toolServers}
-					{stopResponse}
-					{createMessagePair}
-					placeholder={$i18n.t('How can I help you today?')}
-					{onChange}
-					{onUpload}
-					on:submit={(e) => {
-						dispatch('submit', e.detail);
-					}}
-				/>
-			</div>
+			{#if showInput}
+				<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
+					<MessageInput
+						bind:this={messageInput}
+						{history}
+						{selectedModels}
+						bind:files
+						bind:prompt
+						bind:autoScroll
+						bind:selectedToolIds
+						bind:selectedFilterIds
+						bind:imageGenerationEnabled
+						bind:codeInterpreterEnabled
+						bind:webSearchEnabled
+						bind:atSelectedModel
+						bind:showCommands
+						bind:dragged
+						{pendingOAuthTools}
+						{toolServers}
+						{stopResponse}
+						{createMessagePair}
+						placeholder={$i18n.t('How can I help you today?')}
+						{onChange}
+						{onUpload}
+						on:submit={(e) => {
+							dispatch('submit', e.detail);
+						}}
+					/>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -241,14 +256,14 @@
 		>
 			<FolderPlaceholder folder={$selectedFolder} />
 		</div>
-	{:else}
+	{:else if showSuggestions}
 		<div class="mx-auto max-w-2xl font-primary mt-2" in:fade={{ duration: 200, delay: 200 }}>
 			<div class="mx-5">
 				<Suggestions
 					suggestionPrompts={atSelectedModel?.info?.meta?.suggestion_prompts ??
-						models[selectedModelIdx]?.info?.meta?.suggestion_prompts ??
-						$config?.default_prompt_suggestions ??
-						[]}
+					models[selectedModelIdx]?.info?.meta?.suggestion_prompts ??
+					$config?.default_prompt_suggestions ??
+					[]}
 					inputValue={prompt}
 					{onSelect}
 				/>
