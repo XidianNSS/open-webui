@@ -26,7 +26,7 @@ describe('isEdgeCloudModelEnabled', () => {
 		expect(isEdgeCloudModelEnabled([], 'missing')).toBe(false);
 	});
 
-	it('defaults missing collab metadata to disabled', () => {
+	it('preserves legacy behavior when collab metadata is missing', () => {
 		expect(
 			isEdgeCloudModelEnabled(
 				[
@@ -39,7 +39,7 @@ describe('isEdgeCloudModelEnabled', () => {
 				],
 				'model-a'
 			)
-		).toBe(false);
+		).toBe(true);
 	});
 
 	it('returns true only for models that explicitly enable collab', () => {
@@ -58,6 +58,24 @@ describe('isEdgeCloudModelEnabled', () => {
 				'model-a'
 			)
 		).toBe(true);
+	});
+
+	it('returns false when a model explicitly disables collab', () => {
+		expect(
+			isEdgeCloudModelEnabled(
+				[
+					{
+						id: 'model-a',
+						info: {
+							meta: {
+								collab_enabled: false
+							}
+						}
+					}
+				],
+				'model-a'
+			)
+		).toBe(false);
 	});
 });
 

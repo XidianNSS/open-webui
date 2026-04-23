@@ -39,7 +39,11 @@ export const isEdgeCloudModelEnabled = (models: ModelLike[], modelId = ''): bool
 	}
 
 	const model = models.find((item) => item.id === modelId);
-	return Boolean(model?.info?.meta?.collab_enabled ?? false);
+	if (!model) {
+		return false;
+	}
+
+	return model.info?.meta?.collab_enabled !== false;
 };
 
 export const filterFilesAfterUploadWebError = <T extends FileLike>(
