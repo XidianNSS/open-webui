@@ -23,7 +23,11 @@ describe('normalizeSelectedModels', () => {
 
 describe('isEdgeCloudModelEnabled', () => {
 	it('returns false when the model is missing', () => {
-		expect(isEdgeCloudModelEnabled([], 'missing')).toBe(false);
+		expect(isEdgeCloudModelEnabled([], '')).toBe(false);
+	});
+
+	it('preserves legacy behavior when the selected model id is not loaded yet', () => {
+		expect(isEdgeCloudModelEnabled([], 'missing')).toBe(true);
 	});
 
 	it('preserves legacy behavior when collab metadata is missing', () => {

@@ -40,7 +40,7 @@ export const isEdgeCloudModelEnabled = (models: ModelLike[], modelId = ''): bool
 
 	const model = models.find((item) => item.id === modelId);
 	if (!model) {
-		return false;
+		return true;
 	}
 
 	return model.info?.meta?.collab_enabled !== false;
