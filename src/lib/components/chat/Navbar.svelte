@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
+	import { createEventDispatcher, getContext } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	import {
@@ -45,6 +45,7 @@
 	import { resetCollabState } from '$lib/stores/collab';
 
 	const i18n = getContext('i18n');
+	const dispatch = createEventDispatcher();
 
 	export let initNewChat: Function;
 	export let shareEnabled: boolean = false;
@@ -64,11 +65,12 @@
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
 
-
+	const handleModelSelected = (event: CustomEvent) => {
+		dispatch('modelSelected', event.detail);
+	};
 </script>
 
 <ShareChatModal bind:show={showShareChatModal} chatId={$chatId} />
-
 
 <button
 	id="new-chat-button"
@@ -84,7 +86,6 @@
 		? 'pt-0.5 pb-1'
 		: 'pt-1 pb-1'} -mb-12 flex flex-col items-center drag-region"
 >
-
 	<div class="flex items-center w-full pl-1.5 pr-1">
 		<div
 			id="navbar-bg-gradient-to-b"
@@ -136,10 +137,6 @@
 						</div>
 					{/if}
 				</div>
-
-
-
-
 
 				<div class="self-start flex flex-none items-center text-gray-600 dark:text-gray-400">
 					<!-- <div class="md:hidden flex self-center w-[1px] h-5 mx-2 bg-gray-300 dark:bg-stone-700" /> -->
@@ -342,6 +339,4 @@
 			</div>
 		{/if}
 	</div>
-
-
 </nav>
