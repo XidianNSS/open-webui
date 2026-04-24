@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import Placeholder from '$lib/components/chat/Placeholder.svelte';
 	import Messages from '$lib/components/chat/Messages.svelte';
+	import MessageInput from '$lib/components/chat/MessageInput.svelte';
 
 	export let chatId = '';
 	export let history = {
@@ -15,7 +16,6 @@
 	export let toolServers = [];
 	export let currentPrompt = '';
 	export let onSelect = () => {};
-	export let modelLabel = '';
 
 	const noop = async () => {};
 
@@ -79,6 +79,8 @@
 	let mirrorAtSelectedModel = undefined;
 	let mirrorShowCommands = false;
 	let mirrorDragged = false;
+	let mirrorGenerating = false;
+	let mirrorTaskIds = null;
 
 	let mirrorMessagesContainer: HTMLDivElement;
 
@@ -105,7 +107,7 @@
 	}
 </script>
 
-<div class="relative flex h-full w-full min-w-0 flex-col bg-white overflow-hidden">
+<div class="flex relative h-full w-full min-w-0 flex-col bg-white overflow-hidden">
 	{#if hasMessages}
 		<div class="flex min-h-0 flex-1 w-full flex-col">
 			<div
@@ -137,9 +139,8 @@
 			</div>
 		</div>
 	{:else}
-	<div class="flex min-h-0 flex-1 w-full flex-col px-4 pt-6 pb-6">
-		<div class="flex min-h-0 flex-1 w-full items-start justify-center overflow-hidden pt-16">
-			<div class="w-full max-w-[800px]">
+		<div class="flex min-h-0 flex-1 w-full items-start justify-center">
+			<div class="w-full max-w-[800px] pt-63">
 				<Placeholder
 					history={mirrorHistory}
 					{selectedModels}
@@ -165,11 +166,10 @@
 					on:submit={() => {}}
 					showInput={false}
 					showSuggestions={false}
-					centeredMode={false}
+					centeredMode={true}
 					loadingCardVisible={false}
 				/>
 			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
 </div>

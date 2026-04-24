@@ -3058,59 +3058,61 @@
 									</div>
 								</div>
 							{:else}
-	<div class="flex min-h-0 flex-1 w-full flex-col px-4 pt-6 pb-6">
-		{#if loadingCardVisible}
-			<div
-				class={`w-full shrink-0 self-center ${
-					encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
-				}`}
-			>
-				<CollabTopRibbon />
-			</div>
-		{/if}
+								<div class="flex min-h-0 flex-1 w-full flex-col px-4 pt-6 pb-6">
+									{#if loadingCardVisible}
+										<div
+											class={`w-full shrink-0 self-center ${
+												encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
+											}`}
+										>
+											<CollabTopRibbon />
+										</div>
+									{/if}
 
-		<div class="flex min-h-0 flex-1 w-full items-start justify-center overflow-hidden pt-16">
-			<div class="w-full max-w-[800px]">
-				<Placeholder
-					{history}
-					{selectedModels}
-					bind:messageInput
-					bind:files
-					bind:prompt
-					bind:autoScroll
-					bind:selectedToolIds
-					bind:selectedFilterIds
-					bind:imageGenerationEnabled
-					bind:codeInterpreterEnabled
-					bind:webSearchEnabled
-					bind:atSelectedModel
-					bind:showCommands
-					bind:dragged
-					{pendingOAuthTools}
-					toolServers={$toolServers}
-					{stopResponse}
-					{createMessagePair}
-					{onSelect}
-					{onUpload}
-					centeredMode={false}
-					loadingCardVisible={false}
-					onChange={(data) => {
-						if (!$temporaryChatEnabled) {
-							saveDraft(data);
-						}
-					}}
-					on:submit={async (e) => {
-						clearDraft();
-						if (e.detail || files.length > 0) {
-							await tick();
-							submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-						}
-					}}
-				/>
-			</div>
-		</div>
-	</div>
-{/if}
+									<div
+										class="flex min-h-0 flex-1 w-full items-center justify-center overflow-hidden"
+									>
+										<div class="w-full max-w-[800px]">
+											<Placeholder
+												{history}
+												{selectedModels}
+												bind:messageInput
+												bind:files
+												bind:prompt
+												bind:autoScroll
+												bind:selectedToolIds
+												bind:selectedFilterIds
+												bind:imageGenerationEnabled
+												bind:codeInterpreterEnabled
+												bind:webSearchEnabled
+												bind:atSelectedModel
+												bind:showCommands
+												bind:dragged
+												{pendingOAuthTools}
+												toolServers={$toolServers}
+												{stopResponse}
+												{createMessagePair}
+												{onSelect}
+												{onUpload}
+												centeredMode={true}
+												{loadingCardVisible}
+												onChange={(data) => {
+													if (!$temporaryChatEnabled) {
+														saveDraft(data);
+													}
+												}}
+												on:submit={async (e) => {
+													clearDraft();
+													if (e.detail || files.length > 0) {
+														await tick();
+														submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+													}
+												}}
+											/>
+										</div>
+									</div>
+								</div>
+							{/if}
 						</div>
 
 						{#if encryptedMirrorOpen}
