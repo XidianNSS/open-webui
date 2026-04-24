@@ -16,6 +16,7 @@
 	import { getModels } from '$lib/apis';
 	import { toast } from 'svelte-sonner';
 	import localizedFormat from 'dayjs/plugin/localizedFormat';
+	import { normalizeSelectedModels } from '$lib/components/chat/chatReviewFixes';
 
 	const i18n = getContext('i18n');
 	dayjs.extend(localizedFormat);
@@ -102,10 +103,7 @@
 			if (chatContent) {
 				console.log(chatContent);
 
-				selectedModels =
-					(chatContent?.models ?? undefined) !== undefined
-						? chatContent.models
-						: [chatContent.models ?? ''];
+				selectedModels = normalizeSelectedModels(chatContent?.models);
 				history =
 					(chatContent?.history ?? undefined) !== undefined
 						? chatContent.history

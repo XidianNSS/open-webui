@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -114,5 +117,19 @@ describe('buildGoogleDriveUploadLogPayload', () => {
 				Authorization: 'Bearer [REDACTED]'
 			}
 		});
+	});
+});
+
+describe('shared chat model normalization', () => {
+	it('uses the shared model normalizer before rendering messages', () => {
+		const sharedChatPage = readFileSync(
+			resolve(process.cwd(), 'src/routes/s/[id]/+page.svelte'),
+			'utf-8'
+		);
+
+		expect(sharedChatPage).toContain(
+			"import { normalizeSelectedModels } from '$lib/components/chat/chatReviewFixes';"
+		);
+		expect(sharedChatPage).toContain('selectedModels = normalizeSelectedModels(chatContent?.models);');
 	});
 });
