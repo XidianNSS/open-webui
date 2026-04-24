@@ -403,7 +403,6 @@
 			model: selectedItem.model
 		});
 	};
-
 </script>
 
 <DropdownMenu.Root
@@ -507,9 +506,7 @@
 													selectedModelIdx = 0;
 												}
 
-												const item = document.querySelector(
-													`[data-arrow-selected="true"]`
-												);
+												const item = document.querySelector(`[data-arrow-selected="true"]`);
 												item?.scrollIntoView({
 													block: 'center',
 													inline: 'nearest',
@@ -670,18 +667,7 @@
 													{unloadModelHandler}
 													onClick={() => {
 														emitModelSelected(item, index);
-														// value = item.value;
-														// selectedModelIdx = index;
-
-
-	dispatch('modelSelected', {
-		value: item.value,
-		item,
-		model: item.model
-	});
-
-	show = false;
-}}
+													}}
 												/>
 											{/each}
 											<div style="height: {(filteredItems.length - visibleEnd) * ITEM_HEIGHT}px;" />

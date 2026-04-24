@@ -110,6 +110,12 @@
 	import Image from '../common/Image.svelte';
 	import { getBanners } from '$lib/apis/configs';
 	import CollabTopRibbon from '$lib/components/collab/CollabTopRibbon.svelte';
+	import {
+		buildGoogleDriveUploadLogPayload,
+		filterFilesAfterUploadWebError,
+		isEdgeCloudModelEnabled,
+		normalizeSelectedModels
+	} from './chatReviewFixes';
 
 	import {
 		collabState,
@@ -156,9 +162,7 @@
 	$: loadingCardVisible = $collabState.enabled && $collabState.ribbonExpanded;
 
 	$: encryptedMirrorModelLabel =
-		atSelectedModel?.name ??
-		$models.find((m) => m.id === selectedModels[0])?.name ??
-		$WEBUI_NAME;
+		atSelectedModel?.name ?? $models.find((m) => m.id === selectedModels[0])?.name ?? $WEBUI_NAME;
 
 	let selectedToolIds = [];
 	let selectedFilterIds = [];
@@ -198,11 +202,7 @@
 	}
 
 	const isEdgeCloudModelId = (modelId: string = '') => {
-		if (!modelId) return false;
-
-		const model = $models.find((m) => m.id === modelId);
-
-		return Boolean(model?.info?.meta?.collab_enabled ?? true);
+		return isEdgeCloudModelEnabled($models, modelId);
 	};
 
 	const resolveBackendModelType = (modelId: string = ''): string | null => {
@@ -412,8 +412,7 @@
 			oldSelectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
 			'';
 		const nextModelId =
-			selectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ??
-			'';
+			selectedModelIds.find((modelId) => typeof modelId === 'string' && modelId.length > 0) ?? '';
 
 		resetInput();
 		oldSelectedModelIds = structuredClone(selectedModelIds);
@@ -921,14 +920,7 @@
 	});
 
 	const uploadGoogleDriveFile = async (fileData) => {
-		console.log('Starting uploadGoogleDriveFile with:', {
-			id: fileData.id,
-			name: fileData.name,
-			url: fileData.url,
-			headers: {
-				Authorization: `Bearer ${localStorage.token}`
-			}
-		});
+		console.log('Starting uploadGoogleDriveFile with:', buildGoogleDriveUploadLogPayload(fileData));
 
 		if (!fileData?.id || !fileData?.name || !fileData?.url || !fileData?.headers?.Authorization) {
 			throw new Error('Invalid file data provided');
@@ -1075,7 +1067,7 @@
 
 				files = [...files];
 			} catch (e) {
-				files = files.filter((f) => f.name !== url);
+				files = filterFilesAfterUploadWebError(files, fileItem);
 				toast.error(`${e}`);
 			}
 		}
@@ -1375,10 +1367,7 @@
 			if (chatContent) {
 				console.log(chatContent);
 
-				selectedModels =
-					(chatContent?.models ?? undefined) !== undefined
-						? chatContent.models
-						: [chatContent.models ?? ''];
+				selectedModels = normalizeSelectedModels(chatContent?.models);
 
 				if (!($user?.role === 'admin' || ($user?.permissions?.chat?.multiple_models ?? true))) {
 					selectedModels = selectedModels.length > 0 ? [selectedModels[0]] : [''];
@@ -1879,7 +1868,12 @@
 				scrollToBottom();
 			}
 
-			chatCompletedHandler(chatId, message.model, message.id, createMessagesList(history, message.id));
+			chatCompletedHandler(
+				chatId,
+				message.model,
+				message.id,
+				createMessagesList(history, message.id)
+			);
 
 			await processNextInQueue(chatId);
 		}
@@ -2914,18 +2908,20 @@
 								title={encryptedMirrorOpen ? '收起密态镜像页' : '展开密态镜像页'}
 							>
 								<span
-									class="text-lg leading-none transition-transform duration-200 {encryptedMirrorOpen ? 'rotate-180' : ''}"
+									class="text-lg leading-none transition-transform duration-200 {encryptedMirrorOpen
+										? 'rotate-180'
+										: ''}"
 								>
 									‹
 								</span>
 							</button>
 						</div>
 
-							<div
-								class={`flex min-w-0 min-h-0 flex-col overflow-hidden transition-all duration-300 ${
-									encryptedMirrorOpen ? 'w-1/2 border-r border-slate-200/70' : 'w-full'
-								}`}
-							>
+						<div
+							class={`flex min-w-0 min-h-0 flex-col overflow-hidden transition-all duration-300 ${
+								encryptedMirrorOpen ? 'w-1/2 border-r border-slate-200/70' : 'w-full'
+							}`}
+						>
 							{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 								{#if $collabState.enabled && $collabState.ribbonExpanded}
 									<div
@@ -2981,9 +2977,7 @@
 
 								<div class="pb-2 {dragged ? 'z-0' : 'z-10'}">
 									<div
-										class={`mx-auto w-full px-4 ${
-											encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
-										}`}
+										class={`mx-auto w-full px-4 ${encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'}`}
 									>
 										<MessageInput
 											bind:this={messageInput}
