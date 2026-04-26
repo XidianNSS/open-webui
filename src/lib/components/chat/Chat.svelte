@@ -3058,61 +3058,78 @@
 									</div>
 								</div>
 							{:else}
-								<div class="flex min-h-0 flex-1 w-full flex-col px-4 pt-6 pb-6">
-									{#if loadingCardVisible}
-										<div
-											class={`w-full shrink-0 self-center ${
-												encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
-											}`}
-										>
-											<CollabTopRibbon />
-										</div>
-									{/if}
+	<div class="relative min-h-0 flex-1 w-full overflow-hidden">
+		{#if loadingCardVisible}
+			<div
+				class={`pointer-events-auto absolute left-1/2 top-6 z-20 w-full -translate-x-1/2 px-4 ${
+					encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
+				}`}
+			>
+				<CollabTopRibbon />
+			</div>
+		{/if}
 
-									<div
-										class="flex min-h-0 flex-1 w-full items-center justify-center overflow-hidden"
-									>
-										<div class="w-full max-w-[800px]">
-											<Placeholder
-												{history}
-												{selectedModels}
-												bind:messageInput
-												bind:files
-												bind:prompt
-												bind:autoScroll
-												bind:selectedToolIds
-												bind:selectedFilterIds
-												bind:imageGenerationEnabled
-												bind:codeInterpreterEnabled
-												bind:webSearchEnabled
-												bind:atSelectedModel
-												bind:showCommands
-												bind:dragged
-												{pendingOAuthTools}
-												toolServers={$toolServers}
-												{stopResponse}
-												{createMessagePair}
-												{onSelect}
-												{onUpload}
-												centeredMode={true}
-												{loadingCardVisible}
-												onChange={(data) => {
-													if (!$temporaryChatEnabled) {
-														saveDraft(data);
-													}
-												}}
-												on:submit={async (e) => {
-													clearDraft();
-													if (e.detail || files.length > 0) {
-														await tick();
-														submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-													}
-												}}
-											/>
-										</div>
-									</div>
-								</div>
-							{/if}
+		<div class="flex h-full w-full items-center justify-center px-4 py-8">
+			<div class="w-full max-w-[800px]">
+				<div class="mx-auto grid h-[420px] w-full grid-rows-[80px_minmax(0,1fr)]">
+					<div class="flex items-center justify-center gap-3">
+						<img
+							src="/favicon.png"
+							class="size-10 rounded-full border border-gray-100 dark:border-none"
+							aria-hidden="true"
+							draggable="false"
+						/>
+						<div
+							class="text-3xl @sm:text-3xl font-primary text-gray-800 dark:text-gray-100 line-clamp-1"
+						>
+							{encryptedMirrorModelLabel}
+						</div>
+					</div>
+
+					<div class="min-h-0 overflow-y-auto pt-2">
+						<Placeholder
+							{history}
+							{selectedModels}
+							bind:messageInput
+							bind:files
+							bind:prompt
+							bind:autoScroll
+							bind:selectedToolIds
+							bind:selectedFilterIds
+							bind:imageGenerationEnabled
+							bind:codeInterpreterEnabled
+							bind:webSearchEnabled
+							bind:atSelectedModel
+							bind:showCommands
+							bind:dragged
+							{pendingOAuthTools}
+							toolServers={$toolServers}
+							{stopResponse}
+							{createMessagePair}
+							{onSelect}
+							{onUpload}
+							centeredMode={false}
+							loadingCardVisible={false}
+							showHeroTitle={false}
+							onChange={(data) => {
+								if (!$temporaryChatEnabled) {
+									saveDraft(data);
+								}
+							}}
+							on:submit={async (e) => {
+								clearDraft();
+								if (e.detail || files.length > 0) {
+									await tick();
+									submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+								}
+							}}
+						/>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
 						</div>
 
 						{#if encryptedMirrorOpen}

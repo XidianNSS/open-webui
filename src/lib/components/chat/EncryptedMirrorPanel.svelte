@@ -139,36 +139,56 @@
 			</div>
 		</div>
 	{:else}
-		<div class="flex min-h-0 flex-1 w-full items-start justify-center">
-			<div class="w-full max-w-[800px] pt-63">
-				<Placeholder
-					history={mirrorHistory}
-					{selectedModels}
-					bind:messageInput={mirrorMessageInput}
-					bind:files={mirrorFiles}
-					bind:prompt={mirrorPrompt}
-					bind:autoScroll={mirrorAutoScroll}
-					bind:selectedToolIds={mirrorSelectedToolIds}
-					bind:selectedFilterIds={mirrorSelectedFilterIds}
-					bind:imageGenerationEnabled={mirrorImageGenerationEnabled}
-					bind:codeInterpreterEnabled={mirrorCodeInterpreterEnabled}
-					bind:webSearchEnabled={mirrorWebSearchEnabled}
-					bind:atSelectedModel={mirrorAtSelectedModel}
-					bind:showCommands={mirrorShowCommands}
-					bind:dragged={mirrorDragged}
-					{pendingOAuthTools}
-					toolServers={toolServers}
-					stopResponse={noop}
-					createMessagePair={noop}
-					{onSelect}
-					onUpload={noop}
-					onChange={() => {}}
-					on:submit={() => {}}
-					showInput={false}
-					showSuggestions={false}
-					centeredMode={true}
-					loadingCardVisible={false}
-				/>
+	<div class="min-h-0 flex-1 w-full overflow-hidden">
+		<div class="flex h-full w-full items-center justify-center px-4 py-8">
+			<div class="w-full max-w-[800px]">
+				<div class="mx-auto grid h-[420px] w-full grid-rows-[80px_minmax(0,1fr)]">
+					<div class="flex items-center justify-center gap-3">
+						<img
+							src="/favicon.png"
+							class="size-10 rounded-full border border-gray-100 dark:border-none"
+							aria-hidden="true"
+							draggable="false"
+						/>
+						<div
+							class="text-3xl @sm:text-3xl font-primary text-gray-800 dark:text-gray-100 line-clamp-1"
+						>
+							{modelLabel || 'Open WebUI'}
+						</div>
+					</div>
+
+					<div class="min-h-0 overflow-y-auto pt-2">
+						<Placeholder
+							history={mirrorHistory}
+							{selectedModels}
+							bind:messageInput={mirrorMessageInput}
+							bind:files={mirrorFiles}
+							bind:prompt={mirrorPrompt}
+							bind:autoScroll={mirrorAutoScroll}
+							bind:selectedToolIds={mirrorSelectedToolIds}
+							bind:selectedFilterIds={mirrorSelectedFilterIds}
+							bind:imageGenerationEnabled={mirrorImageGenerationEnabled}
+							bind:codeInterpreterEnabled={mirrorCodeInterpreterEnabled}
+							bind:webSearchEnabled={mirrorWebSearchEnabled}
+							bind:atSelectedModel={mirrorAtSelectedModel}
+							bind:showCommands={mirrorShowCommands}
+							bind:dragged={mirrorDragged}
+							{pendingOAuthTools}
+							toolServers={toolServers}
+							stopResponse={noop}
+							createMessagePair={noop}
+							{onSelect}
+							onUpload={noop}
+							onChange={() => {}}
+							on:submit={() => {}}
+							showInput={false}
+							showSuggestions={false}
+							centeredMode={false}
+							loadingCardVisible={false}
+							showHeroTitle={false}
+						/>
+					</div>
+				</div>
 			</div>
 		</div>
 	{/if}

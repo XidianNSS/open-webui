@@ -69,6 +69,9 @@
 	export let loadingCardVisible = false;
 	export let centeredMode = false;
 
+	// 新增：允许外层自己画标题区
+	export let showHeroTitle = true;
+
 	let models = [];
 	let selectedModelIdx = 0;
 
@@ -77,17 +80,19 @@
 	}
 
 	$: models = selectedModels.map((id) => $_models.find((m) => m.id === id));
+
+	$: containerOffsetClass = centeredMode
+		? loadingCardVisible
+			? 'translate-y-18 py-8'
+			: 'translate-y-0 py-0'
+		: showHeroTitle
+			? 'translate-y-6 py-24'
+			: 'translate-y-0 py-0';
 </script>
+
 <div
-	class={`m-auto w-full max-w-6xl px-2 @2xl:px-20 text-center transition-all duration-300 ease-in-out ${
-		centeredMode
-			? loadingCardVisible
-				? 'translate-y-18 py-8'
-				: 'translate-y-0 py-0'
-			: 'translate-y-6 py-24'
-	}`}
+	class={`m-auto w-full max-w-6xl px-2 @2xl:px-20 text-center transition-all duration-300 ease-in-out ${containerOffsetClass}`}
 >
-<!--<div class="m-auto w-full max-w-6xl px-2 @2xl:px-20 translate-y-6 py-24 text-center">-->
 	{#if $temporaryChatEnabled}
 		<Tooltip
 			content={$i18n.t("This chat won't appear in history and your messages will not be saved.")}
@@ -118,7 +123,7 @@
 						selectedFolder.set(null);
 					}}
 				/>
-			{:else}
+			{:else if showHeroTitle}
 				<div class="flex flex-row justify-center gap-3 @sm:gap-3.5 w-fit px-5 max-w-xl">
 					<div class="flex shrink-0 justify-center">
 						<div class="flex -space-x-4 mb-0.5" in:fade={{ duration: 100 }}>
@@ -140,7 +145,7 @@
 									>
 										<img
 											src={`${WEBUI_API_BASE_URL}/models/model/profile/image?id=${model?.id}&lang=${$i18n.language}`}
-											class=" size-9 @sm:size-10 rounded-full border-[1px] border-gray-100 dark:border-none"
+											class="size-9 @sm:size-10 rounded-full border-[1px] border-gray-100 dark:border-none"
 											aria-hidden="true"
 											draggable="false"
 											on:error={(e) => {
@@ -154,14 +159,14 @@
 					</div>
 
 					<div
-						class=" text-3xl @sm:text-3xl line-clamp-1 flex items-center"
+						class="text-3xl @sm:text-3xl line-clamp-1 flex items-center"
 						in:fade={{ duration: 100 }}
 					>
 						{#if models[selectedModelIdx]?.name}
 							<Tooltip
 								content={models[selectedModelIdx]?.name}
 								placement="top"
-								className=" flex items-center "
+								className="flex items-center"
 							>
 								<span class="line-clamp-1">
 									{models[selectedModelIdx]?.name}
@@ -177,7 +182,7 @@
 					<div in:fade={{ duration: 100, delay: 50 }}>
 						{#if models[selectedModelIdx]?.info?.meta?.description ?? null}
 							<Tooltip
-								className=" w-fit"
+								className="w-fit"
 								content={marked.parse(
 									sanitizeResponseContent(
 										models[selectedModelIdx]?.info?.meta?.description ?? ''
@@ -202,10 +207,11 @@
 									{#if models[selectedModelIdx]?.info?.meta?.user.community}
 										<a
 											href="https://openwebui.com/m/{models[selectedModelIdx]?.info?.meta?.user.username}"
-											>{models[selectedModelIdx]?.info?.meta?.user.name
-												? models[selectedModelIdx]?.info?.meta?.user.name
-												: `@${models[selectedModelIdx]?.info?.meta?.user.username}`}</a
 										>
+											{models[selectedModelIdx]?.info?.meta?.user.name
+												? models[selectedModelIdx]?.info?.meta?.user.name
+												: `@${models[selectedModelIdx]?.info?.meta?.user.username}`}
+										</a>
 									{:else}
 										{models[selectedModelIdx]?.info?.meta?.user.name}
 									{/if}
@@ -217,7 +223,7 @@
 			{/if}
 
 			{#if showInput}
-				<div class="text-base font-normal @md:max-w-3xl w-full py-3 {atSelectedModel ? 'mt-2' : ''}">
+				<div class={`text-base font-normal @md:max-w-3xl w-full py-3 ${showHeroTitle && atSelectedModel ? 'mt-2' : ''}`}>
 					<MessageInput
 						bind:this={messageInput}
 						{history}
