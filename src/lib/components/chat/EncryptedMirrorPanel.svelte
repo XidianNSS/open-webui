@@ -2,29 +2,34 @@
 	import { tick } from 'svelte';
 	import Placeholder from '$lib/components/chat/Placeholder.svelte';
 	import Messages from '$lib/components/chat/Messages.svelte';
-	import MessageInput from '$lib/components/chat/MessageInput.svelte';
 
 	export let chatId = '';
-	export let history = {
+
+	export let history: any = {
 		messages: {},
 		currentId: null
 	};
 
-	export let selectedModels = [];
-	export let atSelectedModel = undefined;
-	export let pendingOAuthTools = [];
-	export let toolServers = [];
+	export let selectedModels: any[] = [];
+	export let atSelectedModel: any = undefined;
+	export let pendingOAuthTools: any[] = [];
+	export let toolServers: any[] = [];
 	export let currentPrompt = '';
 	export let onSelect = () => {};
+
+	// 原代码中模板使用了 modelLabel，但 script 中没有定义，会报错
+	export let modelLabel = 'Open WebUI';
 
 	const noop = async () => {};
 
 	const toBase64 = (text: string) => {
 		const bytes = new TextEncoder().encode(text || '');
 		let binary = '';
+
 		for (const b of bytes) {
 			binary += String.fromCharCode(b);
 		}
+
 		return btoa(binary);
 	};
 
@@ -62,30 +67,29 @@
 		return cloned;
 	};
 
-	let mirrorHistory = {
+	let mirrorHistory: any = {
 		messages: {},
 		currentId: null
 	};
 
 	let mirrorPrompt = '';
-	let mirrorMessageInput;
-	let mirrorFiles = [];
+	let mirrorMessageInput: any;
+	let mirrorFiles: any[] = [];
 	let mirrorAutoScroll = true;
-	let mirrorSelectedToolIds = [];
-	let mirrorSelectedFilterIds = [];
+	let mirrorSelectedToolIds: any[] = [];
+	let mirrorSelectedFilterIds: any[] = [];
 	let mirrorImageGenerationEnabled = false;
 	let mirrorCodeInterpreterEnabled = false;
 	let mirrorWebSearchEnabled = false;
-	let mirrorAtSelectedModel = undefined;
+	let mirrorAtSelectedModel: any = undefined;
 	let mirrorShowCommands = false;
 	let mirrorDragged = false;
-	let mirrorGenerating = false;
-	let mirrorTaskIds = null;
 
 	let mirrorMessagesContainer: HTMLDivElement;
 
 	const scrollMirrorToBottom = async () => {
 		await tick();
+
 		if (mirrorMessagesContainer) {
 			mirrorMessagesContainer.scrollTo({
 				top: mirrorMessagesContainer.scrollHeight,
@@ -139,54 +143,57 @@
 			</div>
 		</div>
 	{:else}
-	<div class="min-h-0 flex-1 w-full overflow-hidden">
-		<div class="flex h-full w-full items-center justify-center px-4 py-8">
-			<div class="w-full max-w-[800px]">
-				<div class="mx-auto grid h-[420px] w-full grid-rows-[80px_minmax(0,1fr)]">
-					<div class="flex items-center justify-center gap-3">
-						<img
-							src="/favicon.png"
-							class="size-10 rounded-full border border-gray-100 dark:border-none"
-							aria-hidden="true"
-							draggable="false"
-						/>
-						<div
-							class="text-3xl @sm:text-3xl font-primary text-gray-800 dark:text-gray-100 line-clamp-1"
-						>
-							{modelLabel || 'Open WebUI'}
-						</div>
-					</div>
+		<div class="min-h-0 flex-1 w-full overflow-hidden">
+			<div class="flex h-full w-full items-center justify-center px-4 py-8">
+				<div class="w-full max-w-[800px]">
+					<div class="mx-auto grid h-[420px] w-full grid-rows-[80px_minmax(0,1fr)]">
+						<div class="flex items-center justify-center gap-3">
+							<img
+								src="/favicon.png"
+								class="size-10 rounded-full border border-gray-100 dark:border-none"
+								aria-hidden="true"
+								draggable="false"
+								alt=""
+							/>
 
-					<div class="min-h-0 overflow-y-auto pt-2">
-						<Placeholder
-							history={mirrorHistory}
-							{selectedModels}
-							bind:messageInput={mirrorMessageInput}
-							bind:files={mirrorFiles}
-							bind:prompt={mirrorPrompt}
-							bind:autoScroll={mirrorAutoScroll}
-							bind:selectedToolIds={mirrorSelectedToolIds}
-							bind:selectedFilterIds={mirrorSelectedFilterIds}
-							bind:imageGenerationEnabled={mirrorImageGenerationEnabled}
-							bind:codeInterpreterEnabled={mirrorCodeInterpreterEnabled}
-							bind:webSearchEnabled={mirrorWebSearchEnabled}
-							bind:atSelectedModel={mirrorAtSelectedModel}
-							bind:showCommands={mirrorShowCommands}
-							bind:dragged={mirrorDragged}
-							{pendingOAuthTools}
-							toolServers={toolServers}
-							stopResponse={noop}
-							createMessagePair={noop}
-							{onSelect}
-							onUpload={noop}
-							onChange={() => {}}
-							on:submit={() => {}}
-							showInput={false}
-							showSuggestions={false}
-							centeredMode={false}
-							loadingCardVisible={false}
-							showHeroTitle={false}
-						/>
+							<div
+								class="text-3xl @sm:text-3xl font-primary text-gray-800 dark:text-gray-100 line-clamp-1"
+							>
+								{modelLabel || 'Open WebUI'}
+							</div>
+						</div>
+
+						<div class="min-h-0 overflow-y-auto pt-2">
+							<Placeholder
+								history={mirrorHistory}
+								{selectedModels}
+								bind:messageInput={mirrorMessageInput}
+								bind:files={mirrorFiles}
+								bind:prompt={mirrorPrompt}
+								bind:autoScroll={mirrorAutoScroll}
+								bind:selectedToolIds={mirrorSelectedToolIds}
+								bind:selectedFilterIds={mirrorSelectedFilterIds}
+								bind:imageGenerationEnabled={mirrorImageGenerationEnabled}
+								bind:codeInterpreterEnabled={mirrorCodeInterpreterEnabled}
+								bind:webSearchEnabled={mirrorWebSearchEnabled}
+								bind:atSelectedModel={mirrorAtSelectedModel}
+								bind:showCommands={mirrorShowCommands}
+								bind:dragged={mirrorDragged}
+								{pendingOAuthTools}
+								toolServers={toolServers}
+								stopResponse={noop}
+								createMessagePair={noop}
+								{onSelect}
+								onUpload={noop}
+								onChange={() => {}}
+								on:submit={() => {}}
+								showInput={false}
+								showSuggestions={false}
+								centeredMode={false}
+								loadingCardVisible={false}
+								showHeroTitle={false}
+							/>
+						</div>
 					</div>
 				</div>
 			</div>

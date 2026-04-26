@@ -952,7 +952,7 @@ export const startTaskPolling = (taskId: string) => {
 
 			pollTimer = window.setTimeout(poll, 300);
 
-			if (task.phase === 'loading') {
+			if (task.phase === 'loading' || task.phase === 'completed') {
 				ensureTaskStrategyLoaded(task.task_id);
 			}
 		} catch (error) {
