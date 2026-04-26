@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { collabState } from '$lib/stores/collab';
+	import { collabState, type StrategyLayerPartition } from '$lib/stores/collab';
 
 	type HeadOwner = 'edge' | 'cloud';
 	type FFNOwner = 'edge' | 'cloud' | 'hybrid';
@@ -21,7 +21,6 @@
 		ffnLabel: string;
 	};
 
-	const HEADS_PER_LAYER = 24;
 	const HEADS_PER_ROW = 20;
 	const HEAD_CELL_MIN_WIDTH = 44;
 	const HEAD_CELL_HEIGHT = 56;
@@ -49,37 +48,19 @@
 		await goto(getReturnPath());
 	};
 
-	const getVirtualLayerCount = (totalLayers: number) => clamp(Math.round(totalLayers / 2), 12, 24);
+	const ownerFromAssignment = (assignment: number | undefined): HeadOwner => {
+		if (assignment === 0) return 'edge';
+		if (assignment === 1) return 'cloud';
 
-	const buildHeads = (rowIndex: number, rowCount: number, edgePercent: number) => {
-		const rowRatio = rowCount > 1 ? rowIndex / (rowCount - 1) : 0;
-		const edgeBias = clamp(edgePercent / 100, 0.18, 0.82);
-		const cloudStart = clamp(0.22 + (1 - edgeBias) * 0.44 + rowRatio * 0.28, 0.08, 0.94);
-
-		return Array.from({ length: HEADS_PER_LAYER }, (_, headIndex) => {
-			const headRatio = headIndex / Math.max(HEADS_PER_LAYER - 1, 1);
-			const wobble = Math.cos((rowIndex + 2) * (headIndex + 1) * 0.31) * 0.04;
-			const threshold = clamp(cloudStart + wobble, 0.06, 0.96);
-			const owner = headRatio >= threshold ? ('cloud' as const) : ('edge' as const);
-
-			return {
-				index: headIndex + 1,
-				owner
-			} satisfies HeadCell;
-		});
+		throw new Error(`未知 head 分配值: ${assignment}`);
 	};
 
-	const getFFNOwner = (
-		rowIndex: number,
-		rowCount: number,
-		totalLayers: number,
-		cutLayer: number
-	): FFNOwner => {
-		const virtualCut = clamp(Math.round((cutLayer / Math.max(totalLayers, 1)) * rowCount), 1, rowCount);
+	const ffnOwnerFromAssignment = (assignment: number | undefined): FFNOwner => {
+		if (assignment === 0) return 'edge';
+		if (assignment === 1) return 'cloud';
+		if (assignment === 2) return 'hybrid';
 
-		if (rowIndex + 1 < virtualCut - 1) return 'edge';
-		if (rowIndex + 1 > virtualCut + 1) return 'cloud';
-		return rowIndex % 2 === 0 ? 'edge' : 'hybrid';
+		throw new Error(`未知 FFN 分配值: ${assignment}`);
 	};
 
 	const getFFNLabel = (ffnOwner: FFNOwner) => {
@@ -92,21 +73,38 @@
 		return 'text-slate-500 dark:text-slate-400';
 	};
 
-	const buildLayerRows = (
-		rowCount: number,
-		edgePercent: number,
-		totalLayers: number,
-		cutLayer: number
+	const buildLayerRowsFromStrategy = (
+		layerPartitions: StrategyLayerPartition[] | undefined
 	): LayerRow[] => {
-		return Array.from({ length: rowCount }, (_, rowIndex) => {
-			const heads = buildHeads(rowIndex, rowCount, edgePercent);
-			const edgeHeads = heads.filter((head) => head.owner === 'edge').length;
-			const cloudHeads = heads.length - edgeHeads;
-			const ffnOwner = getFFNOwner(rowIndex, rowCount, totalLayers, cutLayer);
+		if (!Array.isArray(layerPartitions) || layerPartitions.length === 0) {
+			throw new Error('切分策略数据未返回，无法渲染逐层分块视图');
+		}
+
+		return layerPartitions.map((partition) => {
+			if (!Array.isArray(partition.head_assignments) || partition.head_assignments.length === 0) {
+				throw new Error(`Layer${partition.layer_id} 的 head_assignments 为空，无法渲染 head 色块`);
+			}
+
+			const heads = partition.head_assignments.map((assignment, headIndex) => ({
+				index: headIndex + 1,
+				owner: ownerFromAssignment(assignment)
+			}));
+
+			const edgeHeads =
+				typeof partition.edge_head_count === 'number'
+					? partition.edge_head_count
+					: heads.filter((head) => head.owner === 'edge').length;
+
+			const cloudHeads =
+				typeof partition.cloud_head_count === 'number'
+					? partition.cloud_head_count
+					: heads.length - edgeHeads;
+
+			const ffnOwner = ffnOwnerFromAssignment(partition.ffn_assignment);
 
 			return {
-				id: rowIndex + 1,
-				label: `Layer${rowIndex + 1}`,
+				id: partition.layer_id,
+				label: `Layer${partition.layer_id}`,
 				heads,
 				edgeHeads,
 				cloudHeads,
@@ -117,11 +115,26 @@
 	};
 
 	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
-	$: cutLayer = clamp(Math.round($collabState.split?.cutLayer ?? Math.round(totalLayers / 2)), 1, totalLayers);
-	$: edgePercent = clamp(Math.round($collabState.split?.edgePercent ?? 50), 0, 100);
-	$: cloudPercent = clamp(Math.round($collabState.split?.cloudPercent ?? 100 - edgePercent), 0, 100);
-	$: virtualLayerCount = getVirtualLayerCount(totalLayers);
-	$: layerRows = buildLayerRows(virtualLayerCount, edgePercent, totalLayers, cutLayer);
+	$: cutLayer = clamp(
+		Math.round($collabState.split?.cutLayer ?? Math.round(totalLayers / 2)),
+		1,
+		totalLayers
+	);
+	$: edgePercent = clamp(Math.round($collabState.split?.edgePercent ?? 0), 0, 100);
+	$: cloudPercent = clamp(Math.round($collabState.split?.cloudPercent ?? 0), 0, 100);
+	$: layerPartitions = $collabState.split?.layerPartitions ?? [];
+
+	$: layerRowsError = '';
+	$: layerRows = (() => {
+		try {
+			layerRowsError = '';
+			return buildLayerRowsFromStrategy(layerPartitions);
+		} catch (error) {
+			layerRowsError = error instanceof Error ? error.message : '切分策略数据异常，无法渲染逐层分块视图';
+			return [];
+		}
+	})();
+
 	$: mixedLayerCount = layerRows.filter((row) => row.edgeHeads > 0 && row.cloudHeads > 0).length;
 	$: totalGroups = Math.max(Math.ceil(layerRows.length / ROWS_PER_PAGE), 1);
 	$: currentGroup = clamp(currentGroup, 0, totalGroups - 1);
@@ -156,7 +169,7 @@
 				</div>
 
 				<p class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-300">
-					当前切分点 L{cutLayer}，每层展示 24 个 head 的边云分配，以及 FFN 的执行位置。
+					当前切分点 L{cutLayer}，每层展示接口返回的 head 边云分配，以及 FFN 的执行位置。
 				</p>
 			</div>
 
@@ -176,25 +189,30 @@
 				<span class="text-slate-400 dark:text-slate-500">切分点</span>
 				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">L{cutLayer}</span>
 			</div>
+
 			<div>
 				<span class="text-slate-400 dark:text-slate-500">边端占比</span>
 				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{edgePercent}%</span>
 			</div>
+
 			<div>
 				<span class="text-slate-400 dark:text-slate-500">云端占比</span>
 				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{cloudPercent}%</span>
 			</div>
+
 			<div>
 				<span class="text-slate-400 dark:text-slate-500">混合层数</span>
 				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">
 					{mixedLayerCount}
 				</span>
 			</div>
+
 			<div class="flex flex-wrap items-center gap-3">
 				<div class="inline-flex items-center gap-2">
 					<span class="h-3 w-3 rounded-full bg-[#45B4FF]"></span>
 					<span>边端颜色</span>
 				</div>
+
 				<div class="inline-flex items-center gap-2">
 					<span class="h-3 w-3 rounded-full bg-[#FFB629]"></span>
 					<span>云端颜色</span>
@@ -203,78 +221,95 @@
 		</div>
 	</div>
 
-	<div class="px-4 md:px-6">
-		{#each visibleRows as row}
-			<article class="border-b border-slate-200/75 py-7 last:border-b-0 dark:border-white/8">
-				<div class="grid gap-5 xl:grid-cols-[170px_minmax(0,1fr)] xl:items-start">
-					<div class="min-w-0">
-						<div class="mt-2 text-[26px] font-semibold tracking-tight text-slate-900 dark:text-white md:text-[36px]">
-							{row.label}
-						</div>
-
-						<div class={`mt-3 text-[16px] font-medium ${getFFNClassName(row.ffnOwner)}`}>
-							{row.ffnLabel}
-						</div>
-					</div>
-
-					<div class="py-1">
-						<div class="overflow-x-auto pb-2">
+	{#if layerRowsError}
+		<div class="px-4 py-10 md:px-6">
+			<div
+				class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm leading-6 text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300"
+			>
+				<div class="text-base font-semibold">切分策略数据异常</div>
+				<div class="mt-1">{layerRowsError}</div>
+				<div class="mt-2 text-red-600/80 dark:text-red-300/80">
+					请确认 GET /api/v1/schedule/tasks/&#123;task_id&#125;/strategy 已返回 decision.layer_partitions。
+				</div>
+			</div>
+		</div>
+	{:else}
+		<div class="px-4 md:px-6">
+			{#each visibleRows as row}
+				<article class="border-b border-slate-200/75 py-7 last:border-b-0 dark:border-white/8">
+					<div class="grid gap-5 xl:grid-cols-[170px_minmax(0,1fr)] xl:items-start">
+						<div class="min-w-0">
 							<div
-								class="grid"
-								style={`gap:${HEAD_CELL_GAP}px; grid-template-columns: repeat(${HEADS_PER_ROW}, minmax(${HEAD_CELL_MIN_WIDTH}px, 1fr)); min-width:${HEADS_PER_ROW * (HEAD_CELL_MIN_WIDTH + HEAD_CELL_GAP)}px;`}
+								class="mt-2 text-[26px] font-semibold tracking-tight text-slate-900 dark:text-white md:text-[36px]"
 							>
-								{#each row.heads as head}
-									<div
-										class={`flex flex-col items-center justify-center border px-1.5 text-center text-slate-900 dark:text-white ${
-											head.owner === 'edge'
-												? 'border-[#6BC4FF] bg-[linear-gradient(180deg,#76CEFF_0%,#4EAFF8_100%)]'
-												:'border-[#F2C357] bg-[linear-gradient(180deg,#FFD566_0%,#FFC443_100%)]'
-										}`}
-										style={`height:${HEAD_CELL_HEIGHT}px; border-radius:${HEAD_CELL_RADIUS}px;`}
-									>
-										<span class="text-[12px] font-semibold uppercase leading-none tracking-[0.06em]">
-											HEAD
-										</span>
-										<span class="mt-1 text-[13px] font-semibold leading-none">
-											{head.index}
-										</span>
-									</div>
-								{/each}
+								{row.label}
+							</div>
+
+							<div class={`mt-3 text-[16px] font-medium ${getFFNClassName(row.ffnOwner)}`}>
+								{row.ffnLabel}
+							</div>
+						</div>
+
+						<div class="py-1">
+							<div class="overflow-x-auto pb-2">
+								<div
+									class="grid"
+									style={`gap:${HEAD_CELL_GAP}px; grid-template-columns: repeat(${HEADS_PER_ROW}, minmax(${HEAD_CELL_MIN_WIDTH}px, 1fr)); min-width:${HEADS_PER_ROW * (HEAD_CELL_MIN_WIDTH + HEAD_CELL_GAP)}px;`}
+								>
+									{#each row.heads as head}
+										<div
+											class={`flex flex-col items-center justify-center border px-1.5 text-center text-slate-900 dark:text-white ${
+												head.owner === 'edge'
+													? 'border-[#6BC4FF] bg-[linear-gradient(180deg,#76CEFF_0%,#4EAFF8_100%)]'
+													: 'border-[#F2C357] bg-[linear-gradient(180deg,#FFD566_0%,#FFC443_100%)]'
+											}`}
+											style={`height:${HEAD_CELL_HEIGHT}px; border-radius:${HEAD_CELL_RADIUS}px;`}
+										>
+											<span class="text-[12px] font-semibold uppercase leading-none tracking-[0.06em]">
+												HEAD
+											</span>
+
+											<span class="mt-1 text-[13px] font-semibold leading-none">
+												{head.index}
+											</span>
+										</div>
+									{/each}
+								</div>
 							</div>
 						</div>
 					</div>
-				</div>
-			</article>
-		{/each}
-	</div>
-
-	<div
-		class="flex flex-col gap-3 border-t border-slate-200/80 px-4 py-4 text-sm text-slate-500 dark:border-white/8 dark:text-slate-400 md:px-6 lg:flex-row lg:items-center lg:justify-between"
-	>
-		<div>每页展示 6 层，逐层查看 head 分配和 FFN 落点；当前版本为展示版布局。</div>
-
-		<div class="flex items-center gap-3 self-end lg:self-auto">
-			<button
-				type="button"
-				class="rounded-xl border border-slate-200 bg-white px-4 py-2 font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300"
-				on:click={() => (currentGroup = Math.max(currentGroup - 1, 0))}
-				disabled={currentGroup === 0}
-			>
-				上一组
-			</button>
-
-			<div class="min-w-[90px] text-center text-slate-600 dark:text-slate-300">
-				第 {currentGroup + 1} / {totalGroups} 组
-			</div>
-
-			<button
-				type="button"
-				class="rounded-xl border border-slate-200 bg-white px-4 py-2 font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300"
-				on:click={() => (currentGroup = Math.min(currentGroup + 1, totalGroups - 1))}
-				disabled={currentGroup >= totalGroups - 1}
-			>
-				下一组
-			</button>
+				</article>
+			{/each}
 		</div>
-	</div>
+
+		<div
+			class="flex flex-col gap-3 border-t border-slate-200/80 px-4 py-4 text-sm text-slate-500 dark:border-white/8 dark:text-slate-400 md:px-6 lg:flex-row lg:items-center lg:justify-between"
+		>
+			<div>每页展示 6 层，逐层查看接口返回的 head 分配和 FFN 落点。</div>
+
+			<div class="flex items-center gap-3 self-end lg:self-auto">
+				<button
+					type="button"
+					class="rounded-xl border border-slate-200 bg-white px-4 py-2 font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300"
+					on:click={() => (currentGroup = Math.max(currentGroup - 1, 0))}
+					disabled={currentGroup === 0}
+				>
+					上一组
+				</button>
+
+				<div class="min-w-[90px] text-center text-slate-600 dark:text-slate-300">
+					第 {currentGroup + 1} / {totalGroups} 组
+				</div>
+
+				<button
+					type="button"
+					class="rounded-xl border border-slate-200 bg-white px-4 py-2 font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-45 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-300"
+					on:click={() => (currentGroup = Math.min(currentGroup + 1, totalGroups - 1))}
+					disabled={currentGroup >= totalGroups - 1}
+				>
+					下一组
+				</button>
+			</div>
+		</div>
+	{/if}
 </section>
