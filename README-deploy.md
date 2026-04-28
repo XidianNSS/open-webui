@@ -72,7 +72,7 @@ screen -r open-webui
 可以通过环境变量覆盖默认配置：
 
 ```bash
-PORT=8080 HOST=0.0.0.0 ./deploy.sh
+PORT=18080 HOST=0.0.0.0 ./deploy.sh
 ```
 
 常用变量：
@@ -81,7 +81,7 @@ PORT=8080 HOST=0.0.0.0 ./deploy.sh
 | --- | --- | --- |
 | `PROJECT_DIR` | 项目根目录 | 脚本所在目录 |
 | `SCREEN_NAME` | screen 会话名 | `open-webui` |
-| `PORT` | 服务端口 | `8080` |
+| `PORT` | 服务端口 | `18080` |
 | `HOST` | 监听地址 | `0.0.0.0` |
 | `FRONTEND_BUILD_DIR` | 前端构建目录 | `$PROJECT_DIR/build` |
 | `OLLAMA_BASE_URL` | Ollama 地址 | `http://localhost:11434` |
@@ -91,7 +91,7 @@ PORT=8080 HOST=0.0.0.0 ./deploy.sh
 示例：
 
 ```bash
-OLLAMA_BASE_URL=http://127.0.0.1:11434 PORT=8080 ./deploy.sh
+OLLAMA_BASE_URL=http://127.0.0.1:11434 PORT=18080 ./deploy.sh
 ```
 
 ## 六、前端构建说明
@@ -114,7 +114,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:18080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";

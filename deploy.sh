@@ -7,12 +7,12 @@ set -euo pipefail
 #   ./deploy.sh
 #
 # Optional overrides:
-#   PROJECT_DIR=/path/to/open-webui PORT=8080 HOST=0.0.0.0 ./deploy.sh
+#   PROJECT_DIR=/path/to/open-webui PORT=18080 HOST=0.0.0.0 ./deploy.sh
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
 SCREEN_NAME="${SCREEN_NAME:-open-webui}"
-PORT="${PORT:-8080}"
+PORT="${PORT:-18080}"
 HOST="${HOST:-0.0.0.0}"
 FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$PROJECT_DIR/build}"
 
