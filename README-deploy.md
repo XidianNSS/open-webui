@@ -2,90 +2,111 @@
 
 ## 一、前置准备
 
-在服务器上安装以下依赖：
+在服务器上安装依赖：
 
 ```bash
-# Ubuntu/Debian 示例
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip nodejs npm screen git
 
-# 验证版本
-python3 --version   # 要求 3.11 或 3.12
-node --version      # 要求 18.13.0 ~ 22.x.x
+python3 --version
+node --version
+npm --version
+screen --version
 ```
 
-## 二、上传代码
+建议版本：
 
-将项目上传到服务器，例如 `/home/nss-marker/open-webui`：
+- Python: 3.11 或 3.12
+- Node.js: 18.13.0 到 22.x
+
+## 二、获取代码
+
+示例：
 
 ```bash
-git clone <你的仓库地址> /opt/open-webui
-cd /opt/open-webui
+git clone https://github.com/XidianNSS/open-webui.git
+cd open-webui
 ```
 
-## 三、修改脚本中的路径
+如果代码已经在服务器上，直接进入项目根目录即可。
 
-编辑以下 3 个文件，把 `PROJECT_DIR` 改成你的实际路径：
-
-- `deploy.sh`
-- `start-screen.sh`
+## 三、执行部署
 
 ```bash
-PROJECT_DIR="/opt/open-webui"   # 改成你的路径
-```
-
-## 四、执行部署
-
-```bash
-cd /opt/open-webui
 chmod +x deploy.sh start-screen.sh stop-screen.sh
 ./deploy.sh
 ```
 
 `deploy.sh` 会完成：
-1. 创建 Python 虚拟环境（`.venv`）
-2. 安装后端依赖
-3. 前端 `npm install && npm run build`
-4. 将 `build/` 复制到 `backend/open_webui/static`
-5. 在 screen 会话中启动后端
 
-## 五、日常管理命令
+1. 检查 python3、node、npm、screen
+2. 创建或复用 `.venv`
+3. 安装后端 Python 依赖
+4. 执行 `npm install`
+5. 执行 `npm run build`
+6. 通过 `screen` 启动后端服务
+
+脚本默认使用自身所在目录作为 `PROJECT_DIR`，通常不需要手动改路径。
+
+## 四、常用命令
 
 ```bash
-# 查看运行状态
+# 查看 screen 会话
 screen -list
 
-# 进入日志窗口（看实时输出）
+# 进入 Open WebUI 会话查看日志
 screen -r open-webui
 
-# 从 screen 中 detach（不停止服务）
-# 在 screen 窗口内按: Ctrl+A, 然后按 D
+# 从 screen 会话中退出但不停止服务
+# 按 Ctrl+A，然后按 D
 
 # 停止服务
 ./stop-screen.sh
 
-# 只重启（不重新 build）
+# 只重启服务，不重新安装依赖或 build
 ./start-screen.sh
 ```
 
-## 六、关键配置（可选）
+## 五、配置项
 
-在 `deploy.sh` 或 `start-screen.sh` 中修改环境变量：
+可以通过环境变量覆盖默认配置：
+
+```bash
+PORT=18080 HOST=0.0.0.0 ./deploy.sh
+```
+
+常用变量：
 
 | 变量 | 说明 | 默认值 |
-|------|------|--------|
-| `PORT` | 服务端口 | `8080` |
+| --- | --- | --- |
+| `PROJECT_DIR` | 项目根目录 | 脚本所在目录 |
+| `SCREEN_NAME` | screen 会话名 | `open-webui` |
+| `PORT` | 服务端口 | `18080` |
 | `HOST` | 监听地址 | `0.0.0.0` |
+| `FRONTEND_BUILD_DIR` | 前端构建目录 | `$PROJECT_DIR/build` |
 | `OLLAMA_BASE_URL` | Ollama 地址 | `http://localhost:11434` |
-| `OPENAI_API_BASE_URL` | OpenAI 兼容 API 地址 | - |
-| `OPENAI_API_KEY` | API Key | - |
-| `WEBUI_SECRET_KEY` | JWT 密钥（留空会自动生成） | - |
+| `OPENAI_API_BASE_URL` | OpenAI 兼容 API 地址 | 空 |
+| `OPENAI_API_KEY` | API Key | 空 |
 
-你也可以直接在服务器上创建 `.env` 文件放在项目根目录，`start.sh` 会自动读取。
+示例：
 
-## 七、Nginx 反向代理（推荐）
+```bash
+OLLAMA_BASE_URL=http://127.0.0.1:11434 PORT=18080 ./deploy.sh
+```
 
-如果要用域名访问，在 Nginx 中加一段：
+## 六、前端构建说明
+
+`npm run build` 会输出到项目根目录的 `build/`。
+
+脚本不会删除或覆盖 `backend/open_webui/static`。后端启动时会设置：
+
+```bash
+FRONTEND_BUILD_DIR=$PROJECT_DIR/build
+```
+
+这样 FastAPI 会直接加载前端构建产物，同时保留后端自带的静态资源。
+
+## 七、Nginx 反向代理示例
 
 ```nginx
 server {
@@ -93,7 +114,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:18080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -105,20 +126,18 @@ server {
 }
 ```
 
-然后配 HTTPS（certbot）。
+## 八、目录结构
 
-## 八、目录结构说明
-
-```
-/opt/open-webui/
+```text
+open-webui/
 ├── backend/
 │   ├── open_webui/
-│   │   └── static/          # 前端构建产物会复制到这里
+│   │   └── static/
 │   ├── requirements.txt
-│   └── start.sh             # 后端启动脚本
-├── build/                   # 前端 npm run build 的输出
-├── .venv/                   # Python 虚拟环境
-├── deploy.sh                # 完整部署脚本
-├── start-screen.sh          # 仅启动（不 build）
-└── stop-screen.sh           # 停止 screen 会话
+│   └── start.sh
+├── build/
+├── .venv/
+├── deploy.sh
+├── start-screen.sh
+└── stop-screen.sh
 ```

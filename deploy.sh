@@ -1,93 +1,93 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# =============================================
-# Open WebUI 部署脚本（Screen 模式）
-# =============================================
-# 使用说明：
-# 1. 修改下方的 PROJECT_DIR 为你服务器上的实际路径
-# 2. 确保已安装 Python 3.11/3.12、Node.js (18-22)、npm、screen
-# 3. chmod +x deploy.sh && ./deploy.sh
-# =============================================
+# Open WebUI deployment script for a screen-based Linux deployment.
+# Usage:
+#   chmod +x deploy.sh start-screen.sh stop-screen.sh
+#   ./deploy.sh
+#
+# Optional overrides:
+#   PROJECT_DIR=/path/to/open-webui PORT=18080 HOST=0.0.0.0 ./deploy.sh
 
-PROJECT_DIR="/home/nss-marker/open-webui"   # <-- 改成你的实际部署路径
-SCREEN_NAME="open-webui"
-PORT="8080"
-HOST="0.0.0.0"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
+SCREEN_NAME="${SCREEN_NAME:-open-webui}"
+PORT="${PORT:-18080}"
+HOST="${HOST:-0.0.0.0}"
+FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$PROJECT_DIR/build}"
 
-# 可选环境变量（按需修改）
-export OLLAMA_BASE_URL="http://localhost:11434"
+# Optional environment variables. Export before running, or uncomment here.
+export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
 # export OPENAI_API_BASE_URL=""
 # export OPENAI_API_KEY=""
 
-# --------------- 以下通常无需修改 ---------------
+screen_exists() {
+    screen -list | grep -q "[.]${SCREEN_NAME}[[:space:]]"
+}
 
-echo "[1/6] 进入项目目录: $PROJECT_DIR"
+echo "[1/6] Entering project directory: $PROJECT_DIR"
 cd "$PROJECT_DIR"
 
-echo "[2/6] 检查环境..."
-python3 --version || { echo "未找到 python3"; exit 1; }
-node --version   || { echo "未找到 node"; exit 1; }
-npm --version    || { echo "未找到 npm"; exit 1; }
-screen --version || { echo "未找到 screen"; exit 1; }
+echo "[2/6] Checking required commands..."
+command -v python3 >/dev/null || { echo "python3 was not found"; exit 1; }
+command -v node >/dev/null || { echo "node was not found"; exit 1; }
+command -v npm >/dev/null || { echo "npm was not found"; exit 1; }
+command -v screen >/dev/null || { echo "screen was not found"; exit 1; }
 
-echo "[3/6] 创建/激活 Python 虚拟环境..."
+python3 --version
+node --version
+npm --version
+screen --version
+
+echo "[3/6] Creating or activating Python virtual environment..."
 if [ ! -d "$PROJECT_DIR/.venv" ]; then
     python3 -m venv "$PROJECT_DIR/.venv"
 fi
 source "$PROJECT_DIR/.venv/bin/activate"
 
-echo "[4/6] 安装 Python 依赖..."
-pip install --upgrade pip
-pip install -r "$PROJECT_DIR/backend/requirements.txt"
+echo "[4/6] Installing Python dependencies..."
+python -m pip install --upgrade pip
+python -m pip install -r "$PROJECT_DIR/backend/requirements.txt"
 
-echo "[5/6] 安装前端依赖并构建..."
-cd "$PROJECT_DIR"
+echo "[5/6] Installing frontend dependencies and building..."
 npm install
 npm run build
 
-echo "[5.5/6] 将前端构建产物同步到后端 static 目录..."
-# 后端默认从 backend/open_webui/static 加载前端文件
-if [ -d "$PROJECT_DIR/build" ]; then
-    rm -rf "$PROJECT_DIR/backend/open_webui/static"
-    cp -r "$PROJECT_DIR/build" "$PROJECT_DIR/backend/open_webui/static"
-    echo "已复制 build -> backend/open_webui/static"
-else
-    echo "警告: build 目录不存在，请检查前端构建是否成功"
+if [ ! -f "$FRONTEND_BUILD_DIR/index.html" ]; then
+    echo "Frontend build was not found at: $FRONTEND_BUILD_DIR"
     exit 1
 fi
 
-echo "[6/6] 启动 screen 会话: $SCREEN_NAME"
-# 如果已存在同名 screen，先杀掉
-if screen -list | grep -q "$SCREEN_NAME"; then
-    echo "检测到已存在的 screen 会话，先停止..."
+echo "[6/6] Starting screen session: $SCREEN_NAME"
+if screen_exists; then
+    echo "Existing screen session detected, stopping it first..."
     screen -S "$SCREEN_NAME" -X quit 2>/dev/null || true
     sleep 1
 fi
 
-# 在 screen 中启动后端
-screen -dmS "$SCREEN_NAME" bash -c "
-    cd $PROJECT_DIR/backend
-    source $PROJECT_DIR/.venv/bin/activate
-    export PORT=$PORT
-    export HOST=$HOST
-    export OLLAMA_BASE_URL=$OLLAMA_BASE_URL
-    ./start.sh
+screen -dmS "$SCREEN_NAME" bash -lc "
+    cd '$PROJECT_DIR/backend'
+    source '$PROJECT_DIR/.venv/bin/activate'
+    export PORT='$PORT'
+    export HOST='$HOST'
+    export FRONTEND_BUILD_DIR='$FRONTEND_BUILD_DIR'
+    export OLLAMA_BASE_URL='$OLLAMA_BASE_URL'
+    exec ./start.sh
 "
 
 sleep 2
-if screen -list | grep -q "$SCREEN_NAME"; then
+if screen_exists; then
     echo "=============================================="
-    echo "部署成功！"
-    echo "Screen 会话名: $SCREEN_NAME"
-    echo "访问地址: http://$HOST:$PORT"
+    echo "Deployment succeeded"
+    echo "Screen session: $SCREEN_NAME"
+    echo "Listen address: http://$HOST:$PORT"
     echo ""
-    echo "常用命令:"
-    echo "  查看日志:  screen -r $SCREEN_NAME"
-    echo "   detach:  Ctrl+A, D"
-    echo "  停止服务:  ./stop-screen.sh"
+    echo "Useful commands:"
+    echo "  Attach logs:  screen -r $SCREEN_NAME"
+    echo "  Detach:       Ctrl+A, D"
+    echo "  Stop:         ./stop-screen.sh"
     echo "=============================================="
 else
-    echo "启动失败，请检查日志"
+    echo "Startup failed. Attach or inspect screen logs for details."
     exit 1
 fi
