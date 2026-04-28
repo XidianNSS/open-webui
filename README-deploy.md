@@ -48,6 +48,8 @@ chmod +x deploy.sh start-screen.sh stop-screen.sh
 
 脚本默认使用自身所在目录作为 `PROJECT_DIR`，通常不需要手动改路径。
 
+如果项目根目录存在 `.env`，`deploy.sh` 和 `start-screen.sh` 会先加载 `.env`，再启动服务。
+
 ## 四、常用命令
 
 ```bash
@@ -92,6 +94,16 @@ PORT=18080 HOST=0.0.0.0 ./deploy.sh
 
 ```bash
 OLLAMA_BASE_URL=http://127.0.0.1:11434 PORT=18080 ./deploy.sh
+```
+
+也可以写入项目根目录 `.env`：
+
+```bash
+PORT=18080
+HOST=0.0.0.0
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OPENAI_API_BASE_URL=
+OPENAI_API_KEY=
 ```
 
 ## 六、前端构建说明

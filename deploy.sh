@@ -11,15 +11,26 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:-$SCRIPT_DIR}"
+
+load_env_file() {
+    if [ -f "$PROJECT_DIR/.env" ]; then
+        echo "Loading environment variables from $PROJECT_DIR/.env"
+        set -a
+        # shellcheck disable=SC1091
+        source "$PROJECT_DIR/.env"
+        set +a
+    fi
+}
+
+load_env_file
+
 SCREEN_NAME="${SCREEN_NAME:-open-webui}"
 PORT="${PORT:-18080}"
 HOST="${HOST:-0.0.0.0}"
 FRONTEND_BUILD_DIR="${FRONTEND_BUILD_DIR:-$PROJECT_DIR/build}"
 
-# Optional environment variables. Export before running, or uncomment here.
+# Optional default. Values in .env or the current shell take precedence.
 export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://localhost:11434}"
-# export OPENAI_API_BASE_URL=""
-# export OPENAI_API_KEY=""
 
 screen_exists() {
     screen -list | grep -q "[.]${SCREEN_NAME}[[:space:]]"
