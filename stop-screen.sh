@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# =============================================
-# Open WebUI Screen 停止脚本
-# =============================================
-# 用法: ./stop-screen.sh
-# =============================================
+# Stop the Open WebUI screen session.
 
-SCREEN_NAME="open-webui"
+SCREEN_NAME="${SCREEN_NAME:-open-webui}"
 
-if screen -list | grep -q "$SCREEN_NAME"; then
-    echo "停止 screen 会话: $SCREEN_NAME"
+if screen -list | grep -q "[.]${SCREEN_NAME}[[:space:]]"; then
+    echo "Stopping screen session: $SCREEN_NAME"
     screen -S "$SCREEN_NAME" -X quit 2>/dev/null || true
     sleep 1
-    echo "已停止"
+    echo "Stopped"
 else
-    echo "未找到 screen 会话: $SCREEN_NAME"
+    echo "Screen session not found: $SCREEN_NAME"
 fi
