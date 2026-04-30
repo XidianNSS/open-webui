@@ -209,7 +209,31 @@
 		return modelId || null;
 	};
 
-	let collabPreparedModelId = '';
+	const COLLAB_PREPARED_MODEL_ID_KEY = 'collabPreparedModelId';
+
+	const readCollabPreparedModelId = () => {
+		if (typeof window === 'undefined') {
+			return '';
+		}
+
+		return sessionStorage.getItem(COLLAB_PREPARED_MODEL_ID_KEY) ?? '';
+	};
+
+	const setCollabPreparedModelId = (modelId: string) => {
+		collabPreparedModelId = modelId;
+
+		if (typeof window === 'undefined') {
+			return;
+		}
+
+		if (modelId) {
+			sessionStorage.setItem(COLLAB_PREPARED_MODEL_ID_KEY, modelId);
+		} else {
+			sessionStorage.removeItem(COLLAB_PREPARED_MODEL_ID_KEY);
+		}
+	};
+
+	let collabPreparedModelId = readCollabPreparedModelId();
 
 	let collabSelectionTriggering = false;
 	let suppressNextCollabAutoTrigger = false;
@@ -223,14 +247,14 @@
 		if (!primaryModelId) {
 		} else if (!isEdgeCloudModelId(primaryModelId) && $collabState.enabled) {
 			resetCollabState();
-			collabPreparedModelId = '';
+			setCollabPreparedModelId('');
 		} else if (
 			collabPreparedModelId &&
 			primaryModelId !== collabPreparedModelId &&
 			$collabState.enabled
 		) {
 			resetCollabState();
-			collabPreparedModelId = '';
+			setCollabPreparedModelId('');
 		}
 	}
 
@@ -305,14 +329,14 @@
 				strategy: '待计算'
 			});
 
-			collabPreparedModelId = primaryModelId;
+			setCollabPreparedModelId(primaryModelId);
 			toast.success('协同任务已提交，正在获取加载进度');
 			return true;
 		} catch (err) {
 			const message = err instanceof Error ? err.message : '协同任务启动失败';
 			toast.error(message);
 			resetCollabState();
-			collabPreparedModelId = '';
+			setCollabPreparedModelId('');
 			return false;
 		}
 	};
@@ -1252,7 +1276,7 @@
 		resetInput();
 		if (!preserveCollab) {
 			resetCollabState();
-			collabPreparedModelId = '';
+			setCollabPreparedModelId('');
 		}
 
 		await chatId.set('');
@@ -1398,7 +1422,7 @@
 				// 否则组件重建后它会变成 ''，后续又会被当成未准备状态。
 				if (skipCollabReload) {
 					if (primaryModelId && $collabState.enabled) {
-						collabPreparedModelId = primaryModelId;
+						setCollabPreparedModelId(primaryModelId);
 					}
 				} else {
 					void triggerCollabOnModelSelect();
@@ -2922,17 +2946,17 @@
 								encryptedMirrorOpen ? 'w-1/2 border-r border-slate-200/70' : 'w-full'
 							}`}
 						>
-							{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
-								{#if $collabState.enabled && $collabState.ribbonExpanded}
-									<div
-										class={`w-full shrink-0 self-center pt-6 ${
-											encryptedMirrorOpen ? 'max-w-5xl px-4' : 'max-w-4xl px-4'
-										}`}
-									>
-										<CollabTopRibbon />
-									</div>
-								{/if}
+							{#if loadingCardVisible}
+								<div
+									class={`w-full shrink-0 self-center px-4 pt-8 md:pt-10 ${
+										encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
+									}`}
+								>
+									<CollabTopRibbon />
+								</div>
+							{/if}
 
+							{#if ($settings?.landingPageMode === 'chat' && !$selectedFolder) || createMessagesList(history, history.currentId).length > 0}
 								<div
 									class="pb-2.5 flex flex-col justify-between w-full flex-auto overflow-auto h-0 max-w-full z-10 scrollbar-hidden"
 									id="messages-container"
@@ -3058,78 +3082,69 @@
 									</div>
 								</div>
 							{:else}
-	<div class="relative min-h-0 flex-1 w-full overflow-hidden">
-		{#if loadingCardVisible}
-			<div
-				class={`pointer-events-auto absolute left-1/2 top-6 z-20 w-full -translate-x-1/2 px-4 ${
-					encryptedMirrorOpen ? 'max-w-5xl' : 'max-w-4xl'
-				}`}
-			>
-				<CollabTopRibbon />
-			</div>
-		{/if}
+								<div class="relative min-h-0 flex-1 w-full overflow-hidden">
+									<div class="flex h-full w-full items-center justify-center px-4 py-8">
+										<div class="w-full max-w-[800px]">
+											<div class="mx-auto grid h-[420px] w-full grid-rows-[80px_minmax(0,1fr)]">
+												<div class="flex items-center justify-center gap-3">
+													<img
+														src="/favicon.png"
+														class="size-10 rounded-full border border-gray-100 dark:border-none"
+														alt=""
+														aria-hidden="true"
+														draggable="false"
+													/>
+													<div
+														class="text-3xl @sm:text-3xl font-primary text-gray-800 dark:text-gray-100 line-clamp-1"
+													>
+														{encryptedMirrorModelLabel}
+													</div>
+												</div>
 
-		<div class="flex h-full w-full items-center justify-center px-4 py-8">
-			<div class="w-full max-w-[800px]">
-				<div class="mx-auto grid h-[420px] w-full grid-rows-[80px_minmax(0,1fr)]">
-					<div class="flex items-center justify-center gap-3">
-						<img
-							src="/favicon.png"
-							class="size-10 rounded-full border border-gray-100 dark:border-none"
-							aria-hidden="true"
-							draggable="false"
-						/>
-						<div
-							class="text-3xl @sm:text-3xl font-primary text-gray-800 dark:text-gray-100 line-clamp-1"
-						>
-							{encryptedMirrorModelLabel}
-						</div>
-					</div>
-
-					<div class="min-h-0 overflow-y-auto pt-2">
-						<Placeholder
-							{history}
-							{selectedModels}
-							bind:messageInput
-							bind:files
-							bind:prompt
-							bind:autoScroll
-							bind:selectedToolIds
-							bind:selectedFilterIds
-							bind:imageGenerationEnabled
-							bind:codeInterpreterEnabled
-							bind:webSearchEnabled
-							bind:atSelectedModel
-							bind:showCommands
-							bind:dragged
-							{pendingOAuthTools}
-							toolServers={$toolServers}
-							{stopResponse}
-							{createMessagePair}
-							{onSelect}
-							{onUpload}
-							centeredMode={false}
-							loadingCardVisible={false}
-							showHeroTitle={false}
-							onChange={(data) => {
-								if (!$temporaryChatEnabled) {
-									saveDraft(data);
-								}
-							}}
-							on:submit={async (e) => {
-								clearDraft();
-								if (e.detail || files.length > 0) {
-									await tick();
-									submitPrompt(e.detail.replaceAll('\n\n', '\n'));
-								}
-							}}
-						/>
-					</div>
-				</div>
-			</div>
-		</div>
-	</div>
-{/if}
+												<div class="min-h-0 overflow-y-auto pt-2">
+													<Placeholder
+														{history}
+														{selectedModels}
+														bind:messageInput
+														bind:files
+														bind:prompt
+														bind:autoScroll
+														bind:selectedToolIds
+														bind:selectedFilterIds
+														bind:imageGenerationEnabled
+														bind:codeInterpreterEnabled
+														bind:webSearchEnabled
+														bind:atSelectedModel
+														bind:showCommands
+														bind:dragged
+														{pendingOAuthTools}
+														toolServers={$toolServers}
+														{stopResponse}
+														{createMessagePair}
+														{onSelect}
+														{onUpload}
+														centeredMode={false}
+														loadingCardVisible={false}
+														showHeroTitle={false}
+														onChange={(data) => {
+															if (!$temporaryChatEnabled) {
+																saveDraft(data);
+															}
+														}}
+														on:submit={async (e) => {
+															clearDraft();
+															if (e.detail || files.length > 0) {
+																await tick();
+																submitPrompt(e.detail.replaceAll('\n\n', '\n'));
+															}
+														}}
+													/>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							{/if}
 						</div>
 
 						{#if encryptedMirrorOpen}
