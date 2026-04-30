@@ -164,6 +164,8 @@ const API_BASE = resolveApiBase();
 const USE_MOCK_CLOUD_API = (import.meta.env.VITE_USE_MOCK_CLOUD_API ?? 'true') === 'true';
 const MOCK_FAIL_STAGE = (import.meta.env.VITE_MOCK_CLOUD_FAIL_STAGE ?? 'none') as MockFailStage;
 
+// console.log('USE_MOCK_CLOUD_API:', USE_MOCK_CLOUD_API);
+
 const OPENWEBUI_TOKEN_KEYS = ['token', 'openwebui_token'];
 const SESSION_ID_KEY = 'edge_session_id';
 

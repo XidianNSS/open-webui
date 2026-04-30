@@ -1,4 +1,6 @@
-<script lang="ts">
+﻿<script lang="ts">
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 	import { fade } from 'svelte/transition';
 	import { collabState, setCollabRibbonExpanded } from '$lib/stores/collab';
 	import Collaboration from './Collaboration.svelte';
@@ -15,6 +17,19 @@
 			sessionStorage.removeItem('skipCollabRibbonAnimation');
 		}
 	}
+
+	const getCollabDetailPath = () => {
+		if ($page.url.pathname.startsWith('/collab')) {
+			return '/collab';
+		}
+
+		const returnTo = `${$page.url.pathname}${$page.url.search}`;
+		return `/collab?returnTo=${encodeURIComponent(returnTo)}`;
+	};
+
+	const openDetailPage = async () => {
+		await goto(getCollabDetailPath());
+	};
 
 	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
 
@@ -149,7 +164,7 @@
 							</div>
 
 							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态: {$collabState.edge.status}
+								状态： {$collabState.edge.status}
 							</div>
 						</div>
 
@@ -192,7 +207,7 @@
 							</div>
 
 							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态: {$collabState.cloud.status}
+								状态： {$collabState.cloud.status}
 							</div>
 						</div>
 					</div>
@@ -210,7 +225,7 @@
 								</div>
 							</div>
 
-							<div class="flex flex-wrap gap-2">
+							<div class="flex flex-wrap items-center gap-2">
 								{#if hasStrategyPercent}
 									<div
 										class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
@@ -229,13 +244,26 @@
 								>
 									链路 {networkStatusLabel}
 								</div>
+
+								<button
+									type="button"
+									class="collab-detail-button rounded-full border border-sky-300 bg-[linear-gradient(135deg,#38BDF8_0%,#2563EB_100%)] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.22)] transition hover:-translate-y-[1px] hover:border-sky-200 hover:shadow-[0_14px_30px_rgba(37,99,235,0.28)] dark:border-sky-300/30"
+									on:click={openDetailPage}
+								>
+									切分详情
+								</button>
 							</div>
 						</div>
 
 						<div
 							class="mt-4 rounded-[16px] border border-[#ECF1F6] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/8 dark:bg-[#0B1118]"
 						>
-							<div class="relative overflow-hidden rounded-2xl bg-[#EAF0F6] shadow-sm dark:bg-white/8">
+							<button
+								type="button"
+								class="group relative block w-full overflow-hidden rounded-2xl bg-[#EAF0F6] text-left shadow-sm transition hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)] focus:outline-hidden focus:ring-2 focus:ring-sky-300/70 dark:bg-white/8 dark:hover:shadow-[0_16px_34px_rgba(0,0,0,0.28)] dark:focus:ring-sky-400/40"
+								on:click={openDetailPage}
+								aria-label="打开切分详情页"
+							>
 								<div
 									class={`absolute inset-y-0 left-0 rounded-2xl bg-[linear-gradient(90deg,#DCE6F2_0%,#EEF3F8_100%)] dark:bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.06)_100%)] ${motionClass}`}
 									style={`width:${loadingBarWidth}%;opacity:${hasStrategyPercent ? 0 : 1};`}
@@ -276,7 +304,7 @@
 										<span class="truncate drop-shadow-sm">云端 {cloudPercent}%</span>
 									</div>
 								</div>
-							</div>
+							</button>
 
 							<div
 								class={`mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#667085] dark:text-gray-400 ${motionClass}`}
@@ -389,7 +417,7 @@
 							</div>
 
 							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态: {$collabState.edge.status}
+								状态： {$collabState.edge.status}
 							</div>
 						</div>
 
@@ -432,7 +460,7 @@
 							</div>
 
 							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态: {$collabState.cloud.status}
+								状态： {$collabState.cloud.status}
 							</div>
 						</div>
 					</div>
@@ -450,7 +478,7 @@
 								</div>
 							</div>
 
-							<div class="flex flex-wrap gap-2">
+							<div class="flex flex-wrap items-center gap-2">
 								{#if hasStrategyPercent}
 									<div
 										class="rounded-full border border-[#E7ECF3] bg-white/85 px-2.5 py-1 text-[12px] text-[#475467] shadow-sm dark:border-white/8 dark:bg-white/[0.04] dark:text-gray-300"
@@ -469,13 +497,26 @@
 								>
 									链路 {networkStatusLabel}
 								</div>
+
+								<button
+									type="button"
+									class="collab-detail-button rounded-full border border-sky-300 bg-[linear-gradient(135deg,#38BDF8_0%,#2563EB_100%)] px-3.5 py-1.5 text-[12px] font-semibold text-white shadow-[0_10px_24px_rgba(37,99,235,0.22)] transition hover:-translate-y-[1px] hover:border-sky-200 hover:shadow-[0_14px_30px_rgba(37,99,235,0.28)] dark:border-sky-300/30"
+									on:click={openDetailPage}
+								>
+									切分详情
+								</button>
 							</div>
 						</div>
 
 						<div
 							class="mt-4 rounded-[16px] border border-[#ECF1F6] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.95)] dark:border-white/8 dark:bg-[#0B1118]"
 						>
-							<div class="relative overflow-hidden rounded-2xl bg-[#EAF0F6] shadow-sm dark:bg-white/8">
+							<button
+								type="button"
+								class="group relative block w-full overflow-hidden rounded-2xl bg-[#EAF0F6] text-left shadow-sm transition hover:shadow-[0_12px_28px_rgba(15,23,42,0.12)] focus:outline-hidden focus:ring-2 focus:ring-sky-300/70 dark:bg-white/8 dark:hover:shadow-[0_16px_34px_rgba(0,0,0,0.28)] dark:focus:ring-sky-400/40"
+								on:click={openDetailPage}
+								aria-label="打开切分详情页"
+							>
 								<div
 									class="absolute inset-y-0 left-0 rounded-2xl bg-[linear-gradient(90deg,#DCE6F2_0%,#EEF3F8_100%)] transition-all duration-500 ease-out dark:bg-[linear-gradient(90deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.06)_100%)]"
 									style={`width:${loadingBarWidth}%;opacity:${hasStrategyPercent ? 0 : 1};`}
@@ -516,7 +557,7 @@
 										<span class="truncate drop-shadow-sm">云端 {cloudPercent}%</span>
 									</div>
 								</div>
-							</div>
+							</button>
 
 							<div
 								class="mt-3 flex flex-wrap items-center justify-between gap-2 text-[12px] text-[#667085] transition-all duration-500 ease-out dark:text-gray-400"
@@ -540,3 +581,25 @@
 	{/if}
 {/if}
 
+<style>
+	.collab-detail-button {
+		animation: collab-detail-breathe 3.2s ease-in-out infinite;
+	}
+
+	@keyframes collab-detail-breathe {
+		0%,
+		100% {
+			transform: scale(1);
+			box-shadow: 0 10px 24px rgba(37, 99, 235, 0.22);
+		}
+
+		50% {
+			transform: scale(1.03);
+			box-shadow: 0 14px 30px rgba(37, 99, 235, 0.28);
+		}
+	}
+	
+	.collab-detail-button:hover {
+		animation-play-state: paused;
+	}
+</style>
