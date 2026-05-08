@@ -115,11 +115,6 @@
 	};
 
 	$: totalLayers = Math.max($collabState.split?.totalLayers ?? 1, 1);
-	$: cutLayer = clamp(
-		Math.round($collabState.split?.cutLayer ?? Math.round(totalLayers / 2)),
-		1,
-		totalLayers
-	);
 	$: edgePercent = clamp(Math.round($collabState.split?.edgePercent ?? 0), 0, 100);
 	$: cloudPercent = clamp(Math.round($collabState.split?.cloudPercent ?? 0), 0, 100);
 	$: layerPartitions = $collabState.split?.layerPartitions ?? [];
@@ -135,7 +130,6 @@
 		}
 	})();
 
-	$: mixedLayerCount = layerRows.filter((row) => row.edgeHeads > 0 && row.cloudHeads > 0).length;
 	$: totalGroups = Math.max(Math.ceil(layerRows.length / ROWS_PER_PAGE), 1);
 	$: currentGroup = clamp(currentGroup, 0, totalGroups - 1);
 	$: visibleRows = layerRows.slice(currentGroup * ROWS_PER_PAGE, (currentGroup + 1) * ROWS_PER_PAGE);
@@ -151,7 +145,7 @@
 			<div class="min-w-0">
 				<div class="flex flex-wrap items-center gap-3">
 					<h1 class="text-[28px] font-semibold tracking-tight text-slate-900 dark:text-white">
-						逐层分块视图
+						边云切分详情
 					</h1>
 
 					<div
@@ -160,17 +154,7 @@
 						<span class="mr-2 h-2 w-2 rounded-full bg-current"></span>
 						{statusLabel}
 					</div>
-
-					<div
-						class="inline-flex items-center rounded-full bg-amber-50 px-3 py-1 text-[13px] font-medium text-amber-700 dark:bg-amber-300/10 dark:text-amber-300"
-					>
-						边云切分详情
-					</div>
 				</div>
-
-				<p class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-300">
-					当前切分点 L{cutLayer}，每层展示接口返回的 head 边云分配，以及 FFN 的执行位置。
-				</p>
 			</div>
 
 			<button
@@ -186,11 +170,6 @@
 			class="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-slate-500 dark:text-slate-300"
 		>
 			<div>
-				<span class="text-slate-400 dark:text-slate-500">切分点</span>
-				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">L{cutLayer}</span>
-			</div>
-
-			<div>
 				<span class="text-slate-400 dark:text-slate-500">边端占比</span>
 				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{edgePercent}%</span>
 			</div>
@@ -198,13 +177,6 @@
 			<div>
 				<span class="text-slate-400 dark:text-slate-500">云端占比</span>
 				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{cloudPercent}%</span>
-			</div>
-
-			<div>
-				<span class="text-slate-400 dark:text-slate-500">混合层数</span>
-				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">
-					{mixedLayerCount}
-				</span>
 			</div>
 
 			<div class="flex flex-wrap items-center gap-3">
