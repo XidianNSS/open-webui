@@ -3,21 +3,35 @@
 	import Placeholder from '$lib/components/chat/Placeholder.svelte';
 	import Messages from '$lib/components/chat/Messages.svelte';
 
+	type ChatMessage = {
+		id?: string;
+		parentId?: string | null;
+		childrenIds?: string[];
+		role?: string;
+		content?: unknown;
+		promptCiphertext?: string;
+		ciphertext?: string;
+		[key: string]: unknown;
+	};
+
+	type ChatHistory = {
+		messages: Record<string, ChatMessage>;
+		currentId: string | null;
+	};
+
 	export let chatId = '';
 
-	export let history: any = {
+	export let history: ChatHistory = {
 		messages: {},
 		currentId: null
 	};
 
-	export let selectedModels: any[] = [];
-	export let atSelectedModel: any = undefined;
-	export let pendingOAuthTools: any[] = [];
-	export let toolServers: any[] = [];
+	export let selectedModels: unknown[] = [];
+	export let atSelectedModel: unknown = undefined;
+	export let pendingOAuthTools: unknown[] = [];
+	export let toolServers: unknown[] = [];
 	export let currentPrompt = '';
 	export let onSelect = () => {};
-
-	// 原代码中模板使用了 modelLabel，但 script 中没有定义，会报错
 	export let modelLabel = 'Open WebUI';
 
 	const noop = async () => {};
@@ -26,14 +40,14 @@
 		const bytes = new TextEncoder().encode(text || '');
 		let binary = '';
 
-		for (const b of bytes) {
-			binary += String.fromCharCode(b);
+		for (const byte of bytes) {
+			binary += String.fromCharCode(byte);
 		}
 
 		return btoa(binary);
 	};
 
-	const encryptText = (text: string, role: 'user' | 'assistant') => {
+	const encodeFallbackText = (text: string, role: 'user' | 'assistant') => {
 		const encoded = toBase64(text || '');
 		const chunks = encoded.match(/.{1,18}/g) ?? [];
 
@@ -45,7 +59,25 @@
 			.join('   ');
 	};
 
-	const buildMirrorHistory = (sourceHistory: any) => {
+	const findAssistantChild = (sourceHistory: ChatHistory, userMessage: ChatMessage) => {
+		const childIds = userMessage?.childrenIds ?? [];
+		const childFromBranch = childIds
+			.map((childId: string) => sourceHistory.messages?.[childId])
+			.find(
+				(message: ChatMessage | undefined) =>
+					message?.role === 'assistant' && message?.promptCiphertext
+			);
+
+		return (
+			childFromBranch ??
+			(Object.values(sourceHistory.messages ?? {}).find(
+				(message: ChatMessage) =>
+					message?.parentId === userMessage?.id && message?.role === 'assistant'
+			) as ChatMessage | undefined)
+		);
+	};
+
+	const buildMirrorHistory = (sourceHistory: ChatHistory) => {
 		if (!sourceHistory?.messages) {
 			return {
 				messages: {},
@@ -58,30 +90,34 @@
 		for (const id of Object.keys(cloned.messages)) {
 			const msg = cloned.messages[id];
 
-			if (msg?.role === 'user' || msg?.role === 'assistant') {
-				const rawContent = typeof msg.content === 'string' ? msg.content : '[非文本内容]';
-				msg.content = encryptText(rawContent, msg.role);
+			if (msg?.role === 'user') {
+				const childAssistant = findAssistantChild(sourceHistory, msg);
+				const rawContent = typeof msg.content === 'string' ? msg.content : '[non-text content]';
+				msg.content = childAssistant?.promptCiphertext ?? encodeFallbackText(rawContent, 'user');
+			} else if (msg?.role === 'assistant') {
+				const rawContent = typeof msg.content === 'string' ? msg.content : '[non-text content]';
+				msg.content = msg.ciphertext ?? encodeFallbackText(rawContent, 'assistant');
 			}
 		}
 
 		return cloned;
 	};
 
-	let mirrorHistory: any = {
+	let mirrorHistory: ChatHistory = {
 		messages: {},
 		currentId: null
 	};
 
 	let mirrorPrompt = '';
-	let mirrorMessageInput: any;
-	let mirrorFiles: any[] = [];
+	let mirrorMessageInput: unknown;
+	let mirrorFiles: unknown[] = [];
 	let mirrorAutoScroll = true;
-	let mirrorSelectedToolIds: any[] = [];
-	let mirrorSelectedFilterIds: any[] = [];
+	let mirrorSelectedToolIds: unknown[] = [];
+	let mirrorSelectedFilterIds: unknown[] = [];
 	let mirrorImageGenerationEnabled = false;
 	let mirrorCodeInterpreterEnabled = false;
 	let mirrorWebSearchEnabled = false;
-	let mirrorAtSelectedModel: any = undefined;
+	let mirrorAtSelectedModel: unknown = undefined;
 	let mirrorShowCommands = false;
 	let mirrorDragged = false;
 
@@ -99,11 +135,11 @@
 	};
 
 	$: mirrorHistory = buildMirrorHistory(history);
-	$: mirrorPrompt = currentPrompt ? encryptText(currentPrompt, 'user') : '';
+	$: mirrorPrompt = currentPrompt ? encodeFallbackText(currentPrompt, 'user') : '';
 	$: mirrorAtSelectedModel = atSelectedModel;
 
 	$: hasMessages = Object.values(mirrorHistory?.messages ?? {}).some(
-		(message: any) => message?.role === 'user' || message?.role === 'assistant'
+		(message: ChatMessage) => message?.role === 'user' || message?.role === 'assistant'
 	);
 
 	$: if (mirrorHistory?.currentId) {
@@ -120,7 +156,7 @@
 			>
 				<div class="h-full w-full flex flex-col">
 					<Messages
-						chatId={chatId}
+						{chatId}
 						bind:history={mirrorHistory}
 						bind:autoScroll={mirrorAutoScroll}
 						bind:prompt={mirrorPrompt}
@@ -180,7 +216,7 @@
 								bind:showCommands={mirrorShowCommands}
 								bind:dragged={mirrorDragged}
 								{pendingOAuthTools}
-								toolServers={toolServers}
+								{toolServers}
 								stopResponse={noop}
 								createMessagePair={noop}
 								{onSelect}
