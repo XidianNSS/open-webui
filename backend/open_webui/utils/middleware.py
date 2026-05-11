@@ -3102,6 +3102,8 @@ async def non_streaming_chat_response_handler(response, ctx):
                         }
                     )
 
+                    prompt_ciphertext = response_data.get('prompt_ciphertext')
+                    ciphertext = response_data['choices'][0]['message'].get('ciphertext')
                     title = Chats.get_chat_title_by_id(metadata['chat_id'])
 
                     # Use output from backend if provided (OR-compliant backends),
@@ -3141,6 +3143,8 @@ async def non_streaming_chat_response_handler(response, ctx):
                             'role': 'assistant',
                             'content': content,
                             'output': response_output,
+                            **({'promptCiphertext': prompt_ciphertext} if prompt_ciphertext is not None else {}),
+                            **({'ciphertext': ciphertext} if ciphertext is not None else {}),
                             **({'usage': usage} if usage else {}),
                         },
                     )
@@ -3449,6 +3453,8 @@ async def streaming_chat_response_handler(response, ctx):
             content = (
                 message.get('content', '') if message else last_assistant_message if last_assistant_message else ''
             )
+            prompt_ciphertext = message.get('promptCiphertext') if message else None
+            ciphertext = message.get('ciphertext', '') if message else ''
 
             # Initialize output: use existing from message if continuing, else create new
             existing_output = message.get('output') if message else None
@@ -3507,6 +3513,8 @@ async def streaming_chat_response_handler(response, ctx):
 
                 async def stream_body_handler(response, form_data):
                     nonlocal content
+                    nonlocal prompt_ciphertext
+                    nonlocal ciphertext
                     nonlocal usage
                     nonlocal output
                     nonlocal prior_output
@@ -3643,6 +3651,13 @@ async def streaming_chat_response_handler(response, ctx):
                                         continue
 
                                     delta = choices[0].get('delta', {})
+                                    if data.get('prompt_ciphertext') is not None:
+                                        prompt_ciphertext = data.get('prompt_ciphertext')
+                                        Chats.upsert_message_to_chat_by_id_and_message_id(
+                                            metadata['chat_id'],
+                                            metadata['message_id'],
+                                            {'promptCiphertext': prompt_ciphertext},
+                                        )
 
                                     # Handle delta annotations
                                     annotations = delta.get('annotations')
@@ -3759,6 +3774,9 @@ async def streaming_chat_response_handler(response, ctx):
                                         )
 
                                     value = delta.get('content')
+                                    delta_ciphertext = delta.get('ciphertext')
+                                    if delta_ciphertext is not None:
+                                        ciphertext = f'{ciphertext}{delta_ciphertext}'
 
                                     reasoning_content = (
                                         delta.get('reasoning_content')
@@ -3947,6 +3965,12 @@ async def streaming_chat_response_handler(response, ctx):
                                                 {
                                                     'content': serialize_output(full_output()),
                                                     'output': full_output(),
+                                                    **(
+                                                        {'promptCiphertext': prompt_ciphertext}
+                                                        if prompt_ciphertext is not None
+                                                        else {}
+                                                    ),
+                                                    **({'ciphertext': ciphertext} if ciphertext else {}),
                                                 },
                                             )
                                         else:
@@ -3954,11 +3978,26 @@ async def streaming_chat_response_handler(response, ctx):
                                                 'content': serialize_output(full_output()),
                                             }
 
+                                if ciphertext and 'choices' not in data:
+                                    data = {
+                                        **data,
+                                        'ciphertext': ciphertext,
+                                    }
+
                                 if delta:
-                                    delta_count += 1
-                                    last_delta_data = data
-                                    if delta_count >= delta_chunk_size:
-                                        await flush_pending_delta_data(delta_chunk_size)
+                                    if data.get('prompt_ciphertext') is not None:
+                                        await flush_pending_delta_data()
+                                        await event_emitter(
+                                            {
+                                                'type': 'chat:completion',
+                                                'data': data,
+                                            }
+                                        )
+                                    else:
+                                        delta_count += 1
+                                        last_delta_data = data
+                                        if delta_count >= delta_chunk_size:
+                                            await flush_pending_delta_data(delta_chunk_size)
                                 else:
                                     await event_emitter(
                                         {
@@ -4618,6 +4657,12 @@ async def streaming_chat_response_handler(response, ctx):
                             'done': True,
                             'content': serialize_output(output),
                             'output': output,
+                            **(
+                                {'promptCiphertext': prompt_ciphertext}
+                                if prompt_ciphertext is not None
+                                else {}
+                            ),
+                            **({'ciphertext': ciphertext} if ciphertext else {}),
                             **({'usage': usage} if usage else {}),
                         },
                     )
@@ -4625,13 +4670,30 @@ async def streaming_chat_response_handler(response, ctx):
                     Chats.upsert_message_to_chat_by_id_and_message_id(
                         metadata['chat_id'],
                         metadata['message_id'],
-                        {'done': True, 'usage': usage},
+                        {
+                            'done': True,
+                            'usage': usage,
+                            **(
+                                {'promptCiphertext': prompt_ciphertext}
+                                if prompt_ciphertext is not None
+                                else {}
+                            ),
+                            **({'ciphertext': ciphertext} if ciphertext else {}),
+                        },
                     )
                 else:
                     Chats.upsert_message_to_chat_by_id_and_message_id(
                         metadata['chat_id'],
                         metadata['message_id'],
-                        {'done': True},
+                        {
+                            'done': True,
+                            **(
+                                {'promptCiphertext': prompt_ciphertext}
+                                if prompt_ciphertext is not None
+                                else {}
+                            ),
+                            **({'ciphertext': ciphertext} if ciphertext else {}),
+                        },
                     )
 
                 # Send a webhook notification if the user is not active
@@ -4671,13 +4733,27 @@ async def streaming_chat_response_handler(response, ctx):
                             'done': True,
                             'content': serialize_output(output),
                             'output': output,
+                            **(
+                                {'promptCiphertext': prompt_ciphertext}
+                                if prompt_ciphertext is not None
+                                else {}
+                            ),
+                            **({'ciphertext': ciphertext} if ciphertext else {}),
                         },
                     )
                 else:
                     Chats.upsert_message_to_chat_by_id_and_message_id(
                         metadata['chat_id'],
                         metadata['message_id'],
-                        {'done': True},
+                        {
+                            'done': True,
+                            **(
+                                {'promptCiphertext': prompt_ciphertext}
+                                if prompt_ciphertext is not None
+                                else {}
+                            ),
+                            **({'ciphertext': ciphertext} if ciphertext else {}),
+                        },
                     )
 
             if response.background is not None:

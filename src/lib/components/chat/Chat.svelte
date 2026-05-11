@@ -197,6 +197,31 @@
 	// 默认收起
 	let encryptedMirrorOpen = false;
 
+	const appendCiphertextMetadata = (message, data) => {
+		if (data?.prompt_ciphertext !== undefined) {
+			message.promptCiphertext = data.prompt_ciphertext;
+		}
+
+		const choice = data?.choices?.[0];
+		const messageCiphertext = choice?.message?.ciphertext;
+		if (messageCiphertext !== undefined) {
+			message.ciphertext = messageCiphertext;
+		}
+
+		const deltaCiphertext = choice?.delta?.ciphertext;
+		if (deltaCiphertext !== undefined) {
+			message.ciphertext = `${message.ciphertext ?? ''}${deltaCiphertext}`;
+		}
+
+		if (
+			data?.ciphertext !== undefined &&
+			messageCiphertext === undefined &&
+			deltaCiphertext === undefined
+		) {
+			message.ciphertext = data.ciphertext;
+		}
+	};
+
 	$: if (chatIdProp) {
 		navigateHandler();
 	}
@@ -1514,6 +1539,8 @@
 				content: m.content,
 				info: m.info ? m.info : undefined,
 				timestamp: m.timestamp,
+				...(m.promptCiphertext ? { promptCiphertext: m.promptCiphertext } : {}),
+				...(m.ciphertext ? { ciphertext: m.ciphertext } : {}),
 				...(m.usage ? { usage: m.usage } : {}),
 				...(m.sources ? { sources: m.sources } : {})
 			})),
@@ -1574,6 +1601,8 @@
 				content: m.content,
 				info: m.info ? m.info : undefined,
 				timestamp: m.timestamp,
+				...(m.promptCiphertext ? { promptCiphertext: m.promptCiphertext } : {}),
+				...(m.ciphertext ? { ciphertext: m.ciphertext } : {}),
 				...(m.sources ? { sources: m.sources } : {})
 			})),
 			...(event ? { event: event } : {}),
@@ -1755,6 +1784,8 @@
 
 	const chatCompletionEventHandler = async (data, message, chatId) => {
 		const { id, done, choices, content, output, sources, selected_model_id, error, usage } = data;
+
+		appendCiphertextMetadata(message, data);
 
 		if (output) {
 			message.output = output;
@@ -2454,6 +2485,14 @@
 					taskIds.push(res.task_id);
 				} else {
 					taskIds = [res.task_id];
+				}
+
+				if (
+					res.prompt_ciphertext !== undefined ||
+					res.choices?.[0]?.message?.ciphertext !== undefined
+				) {
+					appendCiphertextMetadata(responseMessage, res);
+					history.messages[responseMessageId] = responseMessage;
 				}
 			}
 		}

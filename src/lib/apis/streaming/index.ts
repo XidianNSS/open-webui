@@ -4,6 +4,8 @@ import type { ParsedEvent } from 'eventsource-parser';
 type TextStreamUpdate = {
 	done: boolean;
 	value: string;
+	ciphertext?: string;
+	promptCiphertext?: string;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	sources?: any;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,7 +86,9 @@ async function* openAIStreamToIterator(
 
 			yield {
 				done: false,
-				value: parsedData.choices?.[0]?.delta?.content ?? ''
+				value: parsedData.choices?.[0]?.delta?.content ?? '',
+				ciphertext: parsedData.choices?.[0]?.delta?.ciphertext,
+				promptCiphertext: parsedData.prompt_ciphertext
 			};
 		} catch (e) {
 			console.error('Error extracting delta from SSE event:', e);
@@ -116,6 +120,13 @@ async function* streamLargeDeltasAsRandomChunks(
 			continue;
 		}
 		if (textStreamUpdate.usage) {
+			yield textStreamUpdate;
+			continue;
+		}
+		if (
+			textStreamUpdate.ciphertext !== undefined ||
+			textStreamUpdate.promptCiphertext !== undefined
+		) {
 			yield textStreamUpdate;
 			continue;
 		}
