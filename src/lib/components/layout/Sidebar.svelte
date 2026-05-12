@@ -563,6 +563,7 @@
 	const newChatHandler = async () => {
 		selectedChatId = null;
 		selectedFolder.set(null);
+		sessionStorage.setItem('forceCollabReloadOnNewChat', '1');
 		resetCollabState();
 
 		if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {

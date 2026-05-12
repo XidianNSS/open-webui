@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import CollabLayerSplitPanel from '$lib/components/collab/CollabLayerSplitPanel.svelte';
+	import { chatId } from '$lib/stores';
 	import { collabState } from '$lib/stores/collab';
 
 	const getReturnPath = () => {
@@ -11,11 +12,15 @@
 			return returnTo;
 		}
 
+		if ($chatId && !$chatId.startsWith('local:')) {
+			return `/c/${$chatId}`;
+		}
+
 		return '/';
 	};
 </script>
 
-<div class="h-screen max-h-[100dvh] w-full overflow-y-auto bg-white dark:bg-[#0B1220]">
+<div class="h-screen max-h-[100dvh] w-full min-w-0 flex-1 overflow-y-auto bg-white dark:bg-[#0B1220]">
 	{#if $collabState.enabled}
 		<div class="mx-auto max-w-[1680px] px-6 py-5 md:px-10 md:py-6">
 			<CollabLayerSplitPanel />

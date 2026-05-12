@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { chatId } from '$lib/stores';
 	import { collabState, type StrategyLayerPartition } from '$lib/stores/collab';
 
 	type HeadOwner = 'edge' | 'cloud';
@@ -37,6 +38,10 @@
 
 		if (returnTo.startsWith('/') && !returnTo.startsWith('/collab')) {
 			return returnTo;
+		}
+
+		if ($chatId && !$chatId.startsWith('local:')) {
+			return `/c/${$chatId}`;
 		}
 
 		return '/';

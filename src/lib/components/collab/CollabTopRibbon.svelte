@@ -67,8 +67,8 @@
 				? '连接中'
 				: '未连接';
 
-	$: motionClass = skipEntranceAnimation ? '' : 'transition-all duration-500 ease-out';
-	$: opacityMotionClass = skipEntranceAnimation ? '' : 'transition-opacity duration-500 ease-out';
+	$: motionClass = 'transition-all duration-500 ease-out';
+	$: opacityMotionClass = 'transition-opacity duration-500 ease-out';
 </script>
 
 {#if $collabState.enabled && $collabState.ribbonExpanded}
