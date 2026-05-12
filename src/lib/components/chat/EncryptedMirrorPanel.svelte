@@ -61,12 +61,10 @@
 
 	const findAssistantChild = (sourceHistory: ChatHistory, userMessage: ChatMessage) => {
 		const childIds = userMessage?.childrenIds ?? [];
+
 		const childFromBranch = childIds
 			.map((childId: string) => sourceHistory.messages?.[childId])
-			.find(
-				(message: ChatMessage | undefined) =>
-					message?.role === 'assistant' && message?.promptCiphertext
-			);
+			.find((message: ChatMessage | undefined) => message?.role === 'assistant');
 
 		return (
 			childFromBranch ??
@@ -77,30 +75,118 @@
 		);
 	};
 
+	const getActiveBranchMessages = (sourceHistory: ChatHistory) => {
+		const messages = sourceHistory?.messages ?? {};
+		const branch: ChatMessage[] = [];
+		const visited = new Set<string>();
+
+		let currentId = sourceHistory?.currentId;
+
+		while (currentId && messages[currentId] && !visited.has(currentId)) {
+			visited.add(currentId);
+			branch.push(messages[currentId]);
+
+			currentId = messages[currentId].parentId ?? null;
+		}
+
+		return branch.reverse();
+	};
+
+	const getCurrentTurnMessages = (sourceHistory: ChatHistory) => {
+		const messages = sourceHistory?.messages ?? {};
+		const currentMessage = sourceHistory.currentId ? messages[sourceHistory.currentId] : undefined;
+
+		if (!currentMessage) {
+			return [];
+		}
+
+		if (currentMessage.role === 'assistant') {
+			const parentMessage = currentMessage.parentId ? messages[currentMessage.parentId] : undefined;
+			return parentMessage?.role === 'user' ? [parentMessage, currentMessage] : [currentMessage];
+		}
+
+		if (currentMessage.role === 'user') {
+			const assistant = findAssistantChild(sourceHistory, currentMessage);
+			return assistant ? [currentMessage, assistant] : [currentMessage];
+		}
+
+		const branchMessages = getActiveBranchMessages(sourceHistory);
+		const latestUserIndex = branchMessages.map((message) => message.role).lastIndexOf('user');
+
+		return latestUserIndex >= 0 ? branchMessages.slice(latestUserIndex) : [currentMessage];
+	};
+
 	const buildMirrorHistory = (sourceHistory: ChatHistory) => {
-		if (!sourceHistory?.messages) {
+		if (!sourceHistory?.messages || !sourceHistory.currentId) {
 			return {
 				messages: {},
 				currentId: null
 			};
 		}
 
-		const cloned = structuredClone(sourceHistory);
+		const branchMessages = getCurrentTurnMessages(sourceHistory);
 
-		for (const id of Object.keys(cloned.messages)) {
-			const msg = cloned.messages[id];
-
-			if (msg?.role === 'user') {
-				const childAssistant = findAssistantChild(sourceHistory, msg);
-				const rawContent = typeof msg.content === 'string' ? msg.content : '[non-text content]';
-				msg.content = childAssistant?.promptCiphertext ?? encodeFallbackText(rawContent, 'user');
-			} else if (msg?.role === 'assistant') {
-				const rawContent = typeof msg.content === 'string' ? msg.content : '[non-text content]';
-				msg.content = msg.ciphertext ?? encodeFallbackText(rawContent, 'assistant');
-			}
+		if (branchMessages.length === 0) {
+			return {
+				messages: {},
+				currentId: null
+			};
 		}
 
-		return cloned;
+		const mirrorMessages: Record<string, ChatMessage> = {};
+		let previousMirrorId: string | null = null;
+		let currentMirrorId: string | null = null;
+
+		for (const [index, sourceMessage] of branchMessages.entries()) {
+			const sourceMessageId = sourceMessage.id ?? `message-${index}`;
+			const mirrorMessageId = `mirror-${sourceMessageId}`;
+
+			const nextSourceMessage = branchMessages[index + 1];
+
+			const mirrorMessage: ChatMessage = {
+				...structuredClone(sourceMessage),
+				id: mirrorMessageId,
+				parentId: previousMirrorId,
+				childrenIds: []
+			};
+
+			if (mirrorMessage.role === 'user') {
+				const rawContent =
+					typeof sourceMessage.content === 'string'
+						? sourceMessage.content
+						: '[non-text content]';
+
+				const branchAssistant =
+					nextSourceMessage?.role === 'assistant'
+						? nextSourceMessage
+						: findAssistantChild(sourceHistory, sourceMessage);
+
+				mirrorMessage.content =
+					branchAssistant?.promptCiphertext ?? encodeFallbackText(rawContent, 'user');
+			} else if (mirrorMessage.role === 'assistant') {
+				const rawContent =
+					typeof sourceMessage.content === 'string'
+						? sourceMessage.content
+						: '[non-text content]';
+
+				mirrorMessage.content =
+					sourceMessage.ciphertext ?? encodeFallbackText(rawContent, 'assistant');
+			}
+
+			mirrorMessages[mirrorMessageId] = mirrorMessage;
+
+			if (previousMirrorId && mirrorMessages[previousMirrorId]) {
+				mirrorMessages[previousMirrorId].childrenIds = [mirrorMessageId];
+			}
+
+			previousMirrorId = mirrorMessageId;
+			currentMirrorId = mirrorMessageId;
+		}
+
+		return {
+			messages: mirrorMessages,
+			currentId: currentMirrorId
+		};
 	};
 
 	let mirrorHistory: ChatHistory = {
@@ -156,7 +242,7 @@
 			>
 				<div class="h-full w-full flex flex-col">
 					<Messages
-						{chatId}
+						chatId={`mirror-${chatId || 'new'}`}
 						bind:history={mirrorHistory}
 						bind:autoScroll={mirrorAutoScroll}
 						bind:prompt={mirrorPrompt}

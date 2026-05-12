@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 
 export type CollabPhase =
 	| 'idle'
@@ -389,8 +389,104 @@ const initialState: CollabState = {
 export const collabState = writable<CollabState>({ ...initialState });
 
 let pollTimer: number | null = null;
+const TASK_POLL_INTERVAL_MS = 1000;
+const PROGRESS_ANIMATION_INTERVAL_MS = 80;
+const STRATEGY_PORTION = 50;
+const LOADING_PORTION = 100 - STRATEGY_PORTION;
 const strategyLoadedTaskIds = new Set<string>();
 const strategyLoadingTaskIds = new Set<string>();
+let activePreparationModelType: string | null = null;
+let activePreparationPromise: Promise<BackendTask> | null = null;
+let progressAnimationTimer: number | null = null;
+let progressTargets = {
+	overall: 0,
+	edge: 0,
+	cloud: 0
+};
+
+const clearProgressAnimation = () => {
+	if (!isBrowser || progressAnimationTimer === null) return;
+
+	window.clearInterval(progressAnimationTimer);
+	progressAnimationTimer = null;
+};
+
+const stepProgressToward = (current: number, target: number) => {
+	const safeCurrent = clamp(Math.round(current ?? 0), 0, 100);
+	const safeTarget = clamp(Math.round(target ?? 0), 0, 100);
+
+	if (safeCurrent === safeTarget) return safeCurrent;
+	if (safeTarget < safeCurrent) return safeTarget;
+
+	const distance = safeTarget - safeCurrent;
+	const step = clamp(Math.ceil(distance / 10), 1, 4);
+
+	return Math.min(safeCurrent + step, safeTarget);
+};
+
+const animateProgressTo = (
+	targets: { overall: number; edge: number; cloud: number },
+	immediate = false
+) => {
+	progressTargets = {
+		overall: clamp(Math.round(targets.overall), 0, 100),
+		edge: clamp(Math.round(targets.edge), 0, 100),
+		cloud: clamp(Math.round(targets.cloud), 0, 100)
+	};
+
+	if (immediate || !isBrowser) {
+		clearProgressAnimation();
+		collabState.update((s) => ({
+			...s,
+			overallProgress: progressTargets.overall,
+			edge: {
+				...s.edge,
+				progress: progressTargets.edge
+			},
+			cloud: {
+				...s.cloud,
+				progress: progressTargets.cloud
+			}
+		}));
+		return;
+	}
+
+	if (progressAnimationTimer !== null) {
+		return;
+	}
+
+	progressAnimationTimer = window.setInterval(() => {
+		let done = false;
+
+		collabState.update((s) => {
+			const nextOverall = stepProgressToward(s.overallProgress, progressTargets.overall);
+			const nextEdge = stepProgressToward(s.edge.progress, progressTargets.edge);
+			const nextCloud = stepProgressToward(s.cloud.progress, progressTargets.cloud);
+
+			done =
+				nextOverall === progressTargets.overall &&
+				nextEdge === progressTargets.edge &&
+				nextCloud === progressTargets.cloud;
+
+			return {
+				...s,
+				overallProgress: nextOverall,
+				edge: {
+					...s.edge,
+					progress: nextEdge
+				},
+				cloud: {
+					...s.cloud,
+					progress: nextCloud
+				}
+			};
+		});
+
+		if (done) {
+			clearProgressAnimation();
+		}
+	}, PROGRESS_ANIMATION_INTERVAL_MS);
+};
 
 export const stopTaskPolling = () => {
 	if (!isBrowser || pollTimer === null) return;
@@ -400,8 +496,11 @@ export const stopTaskPolling = () => {
 
 export const resetCollabState = () => {
 	stopTaskPolling();
+	clearProgressAnimation();
 	strategyLoadedTaskIds.clear();
 	strategyLoadingTaskIds.clear();
+	activePreparationModelType = null;
+	activePreparationPromise = null;
 	collabState.set({
 		...initialState,
 		token: getOpenWebUIToken(),
@@ -489,15 +588,15 @@ const buildNodeStatus = (
 };
 
 export const applyTaskToStore = (task: BackendTask) => {
-	const STRATEGY_PORTION = 30;
-	const LOADING_PORTION = 100 - STRATEGY_PORTION;
-
 	const phaseProgress = clamp(task.phase_progress ?? 0, 0, 100);
 	const rawEdgeProgress = clamp(task.edge_progress ?? 0, 0, 100);
 	const rawCloudProgress = clamp(task.cloud_progress ?? 0, 0, 100);
+	const edgeLoadProgress = task.edge_progress !== undefined ? rawEdgeProgress : phaseProgress;
+	const cloudLoadProgress = task.cloud_progress !== undefined ? rawCloudProgress : phaseProgress;
 
 	let edgeProgress = 0;
 	let cloudProgress = 0;
+	const overallProgress = clamp(task.overall_progress ?? 0, 0, 100);
 
 	if (task.status === 'completed') {
 		edgeProgress = 100;
@@ -507,8 +606,8 @@ export const applyTaskToStore = (task: BackendTask) => {
 		edgeProgress = strategyMapped;
 		cloudProgress = strategyMapped;
 	} else if (task.phase === 'loading') {
-		edgeProgress = STRATEGY_PORTION + Math.round((rawEdgeProgress / 100) * LOADING_PORTION);
-		cloudProgress = STRATEGY_PORTION + Math.round((rawCloudProgress / 100) * LOADING_PORTION);
+		edgeProgress = STRATEGY_PORTION + Math.round((edgeLoadProgress / 100) * LOADING_PORTION);
+		cloudProgress = STRATEGY_PORTION + Math.round((cloudLoadProgress / 100) * LOADING_PORTION);
 	}
 
 	collabState.update((s) => ({
@@ -518,7 +617,7 @@ export const applyTaskToStore = (task: BackendTask) => {
 		ribbonExpanded: task.status === 'completed' ? false : !s.ribbonManuallyCollapsed,
 		ribbonManuallyCollapsed: task.status === 'completed' ? false : s.ribbonManuallyCollapsed,
 		phase: inferUiPhase(task),
-		overallProgress: clamp(task.overall_progress ?? 0, 0, 100),
+		overallProgress,
 		token: getOpenWebUIToken(),
 		taskId: task.task_id,
 		backendStatus: task.status,
@@ -527,7 +626,6 @@ export const applyTaskToStore = (task: BackendTask) => {
 		error: task.error_detail ?? null,
 		edge: {
 			...s.edge,
-			progress: edgeProgress,
 			status: buildNodeStatus(
 				task.phase,
 				task.message,
@@ -538,7 +636,6 @@ export const applyTaskToStore = (task: BackendTask) => {
 		},
 		cloud: {
 			...s.cloud,
-			progress: cloudProgress,
 			status: buildNodeStatus(
 				task.phase,
 				task.message,
@@ -563,9 +660,18 @@ export const applyTaskToStore = (task: BackendTask) => {
 					? 'connected'
 					: task.status === 'failed'
 						? 'disconnected'
-						: 'connecting'
+			: 'connecting'
 		}
 	}));
+
+	animateProgressTo(
+		{
+			overall: get(collabState).overallProgress,
+			edge: edgeProgress,
+			cloud: cloudProgress
+		},
+		task.status === 'completed' || task.status === 'failed'
+	);
 };
 
 export const applyStrategyToStore = (strategyData: TaskStrategyResponse) => {
@@ -952,7 +1058,7 @@ export const startTaskPolling = (taskId: string) => {
 				return;
 			}
 
-			pollTimer = window.setTimeout(poll, 300);
+			pollTimer = window.setTimeout(poll, TASK_POLL_INTERVAL_MS);
 
 			if (task.phase === 'loading' || task.phase === 'completed') {
 				ensureTaskStrategyLoaded(task.task_id);
@@ -976,6 +1082,26 @@ export const startTaskPolling = (taskId: string) => {
 	void poll();
 };
 
+const createTaskFromState = (state: CollabState): BackendTask | null => {
+	if (!state.taskId || state.backendStatus === 'idle' || state.backendPhase === 'idle') {
+		return null;
+	}
+
+	return {
+		task_id: state.taskId,
+		status: state.backendStatus,
+		phase: state.backendPhase,
+		phase_progress: state.overallProgress,
+		overall_progress: state.overallProgress,
+		message: state.message,
+		edge_progress: state.edge.progress,
+		cloud_progress: state.cloud.progress,
+		edge_status: state.edge.status,
+		cloud_status: state.cloud.status,
+		error_detail: state.error
+	};
+};
+
 export const startRealCollabPreparation = async (
 	modelType: string,
 	payload?: {
@@ -991,6 +1117,32 @@ export const startRealCollabPreparation = async (
 		edgeStorageLimitGb?: number;
 	}
 ) => {
+	const currentState = get(collabState);
+	const existingTask = createTaskFromState(currentState);
+
+	if (
+		existingTask &&
+		currentState.enabled &&
+		currentState.backendStatus !== 'failed' &&
+		currentState.split?.modelType === modelType
+	) {
+		if (
+			currentState.backendStatus !== 'completed' &&
+			pollTimer === null &&
+			currentState.taskId
+		) {
+			startTaskPolling(currentState.taskId);
+		}
+
+		return existingTask;
+	}
+
+	if (activePreparationModelType === modelType && activePreparationPromise) {
+		return activePreparationPromise;
+	}
+
+	activePreparationModelType = modelType;
+	activePreparationPromise = (async () => {
 	stopTaskPolling();
 	strategyLoadedTaskIds.clear();
 	strategyLoadingTaskIds.clear();
@@ -1052,7 +1204,7 @@ export const startRealCollabPreparation = async (
 			edgeHeadCountTotal: undefined,
 			cloudHeadCountTotal: undefined,
 			totalHeadCount: undefined,
-			modelType: undefined,
+			modelType,
 			layerPartitions: []
 		},
 		network: {
@@ -1065,4 +1217,11 @@ export const startRealCollabPreparation = async (
 	applyTaskToStore(task);
 	startTaskPolling(task.task_id);
 	return task;
+	})();
+
+	try {
+		return await activePreparationPromise;
+	} finally {
+		activePreparationPromise = null;
+	}
 };

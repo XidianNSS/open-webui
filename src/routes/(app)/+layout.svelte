@@ -457,7 +457,13 @@
 				<Sidebar />
 
 				{#if loaded}
-					<slot />
+					<div
+						class="w-full min-w-0 flex-1 h-full flex {$showSidebar
+							? 'md:max-w-[calc(100%-var(--sidebar-width))]'
+							: ''}"
+					>
+						<slot />
+					</div>
 				{:else}
 					<div
 						class="w-full flex-1 h-full flex items-center justify-center {$showSidebar

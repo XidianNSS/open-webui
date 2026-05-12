@@ -3092,7 +3092,14 @@ async def non_streaming_chat_response_handler(response, ctx):
 
             choices = response_data.get('choices', [])
             if choices and choices[0].get('message', {}).get('content'):
-                content = response_data['choices'][0]['message']['content']
+                message = response_data['choices'][0]['message']
+                if message.get('ciphertext') is not None:
+                    message['content'], message['ciphertext'] = (
+                        message.get('ciphertext'),
+                        message.get('content'),
+                    )
+
+                content = message['content']
 
                 if content:
                     await event_emitter(
@@ -3103,7 +3110,7 @@ async def non_streaming_chat_response_handler(response, ctx):
                     )
 
                     prompt_ciphertext = response_data.get('prompt_ciphertext')
-                    ciphertext = response_data['choices'][0]['message'].get('ciphertext')
+                    ciphertext = message.get('ciphertext')
                     title = Chats.get_chat_title_by_id(metadata['chat_id'])
 
                     # Use output from backend if provided (OR-compliant backends),
@@ -3773,10 +3780,11 @@ async def streaming_chat_response_handler(response, ctx):
                                             }
                                         )
 
-                                    value = delta.get('content')
+                                    delta_content = delta.get('content')
                                     delta_ciphertext = delta.get('ciphertext')
-                                    if delta_ciphertext is not None:
-                                        ciphertext = f'{ciphertext}{delta_ciphertext}'
+                                    value = delta_ciphertext if delta_ciphertext is not None else delta_content
+                                    if delta_ciphertext is not None and delta_content is not None:
+                                        ciphertext = f'{ciphertext}{delta_content}'
 
                                     reasoning_content = (
                                         delta.get('reasoning_content')

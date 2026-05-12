@@ -213,11 +213,7 @@
 			message.ciphertext = `${message.ciphertext ?? ''}${deltaCiphertext}`;
 		}
 
-		if (
-			data?.ciphertext !== undefined &&
-			messageCiphertext === undefined &&
-			deltaCiphertext === undefined
-		) {
+		if (data?.ciphertext !== undefined) {
 			message.ciphertext = data.ciphertext;
 		}
 	};
@@ -327,15 +323,16 @@
 			return true;
 		}
 
+		const backendModelType = resolveBackendModelType(primaryModelId);
+
 		if (
 			$collabState.enabled &&
 			$collabState.backendStatus !== 'failed' &&
-			collabPreparedModelId === primaryModelId
+			(collabPreparedModelId === primaryModelId || $collabState.split?.modelType === backendModelType)
 		) {
+			setCollabPreparedModelId(primaryModelId);
 			return true;
 		}
-
-		const backendModelType = resolveBackendModelType(primaryModelId);
 
 		try {
 			if (!hasStoredCloudToken()) {
@@ -870,7 +867,16 @@
 		const pageSubscribe = page.subscribe(async (p) => {
 			if (p.url.pathname === '/') {
 				await tick();
-				initNewChat({ preserveCollab: true, triggerCollab: false });
+				const forceCollabReloadOnNewChat =
+					sessionStorage.getItem('forceCollabReloadOnNewChat') === '1';
+				if (forceCollabReloadOnNewChat) {
+					sessionStorage.removeItem('forceCollabReloadOnNewChat');
+				}
+
+				initNewChat({
+					preserveCollab: !forceCollabReloadOnNewChat,
+					triggerCollab: forceCollabReloadOnNewChat
+				});
 
 				try {
 					banners.set(await getBanners(localStorage.token).catch(() => []));
@@ -1197,6 +1203,13 @@
 
 	const initNewChat = async ({ preserveCollab = false, triggerCollab = true } = {}) => {
 		console.log('initNewChat');
+		const skipCollabReload = sessionStorage.getItem('skipCollabReload') === '1';
+		if (skipCollabReload) {
+			sessionStorage.removeItem('skipCollabReload');
+			suppressNextCollabAutoTrigger = true;
+			triggerCollab = false;
+		}
+
 		if ($user?.role !== 'admin' && $user?.permissions?.chat?.temporary_enforced) {
 			await temporaryChatEnabled.set(true);
 		}
@@ -1385,6 +1398,11 @@
 
 		if (triggerCollab) {
 			void triggerCollabOnModelSelect();
+		}
+
+		if (skipCollabReload) {
+			await tick();
+			suppressNextCollabAutoTrigger = false;
 		}
 	};
 
@@ -2489,7 +2507,8 @@
 
 				if (
 					res.prompt_ciphertext !== undefined ||
-					res.choices?.[0]?.message?.ciphertext !== undefined
+					res.choices?.[0]?.message?.ciphertext !== undefined ||
+					res.ciphertext !== undefined
 				) {
 					appendCiphertextMetadata(responseMessage, res);
 					history.messages[responseMessageId] = responseMessage;
