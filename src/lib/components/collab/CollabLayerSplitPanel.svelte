@@ -27,7 +27,6 @@
 	const HEAD_CELL_HEIGHT = 56;
 	const HEAD_CELL_GAP = 8;
 	const HEAD_CELL_RADIUS = 16;
-	const CELLS_PER_ROW = HEADS_PER_ROW + 1;
 	const ROWS_PER_PAGE = 6;
 
 	const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
@@ -70,21 +69,13 @@
 	};
 
 	const getFFNLabel = (ffnOwner: FFNOwner) => {
-		if (ffnOwner === 'edge') return '边端';
-		if (ffnOwner === 'cloud') return '云端';
-		return '边云协同';
+		if (ffnOwner === 'edge') return 'FFN: 边端执行';
+		if (ffnOwner === 'cloud') return 'FFN: 云端执行';
+		return 'FFN: 边云协同';
 	};
 
-	const getExecutionClassName = (owner: HeadOwner | FFNOwner) => {
-		if (owner === 'edge') {
-			return 'border-[#6BC4FF] bg-[linear-gradient(180deg,#76CEFF_0%,#4EAFF8_100%)] shadow-[0_12px_26px_rgba(69,180,255,0.22)]';
-		}
-
-		if (owner === 'cloud') {
-			return 'border-[#F2C357] bg-[linear-gradient(180deg,#FFD566_0%,#FFC443_100%)] shadow-[0_12px_26px_rgba(255,182,41,0.24)]';
-		}
-
-		return 'border-[#BFD2EA] bg-[linear-gradient(135deg,#76CEFF_0%,#76CEFF_47%,#F8FAFC_50%,#FFD566_53%,#FFC443_100%)] shadow-[0_12px_26px_rgba(79,128,205,0.18)]';
+	const getFFNClassName = () => {
+		return 'text-slate-500 dark:text-slate-400';
 	};
 
 	const buildLayerRowsFromStrategy = (
@@ -139,18 +130,14 @@
 			layerRowsError = '';
 			return buildLayerRowsFromStrategy(layerPartitions);
 		} catch (error) {
-			layerRowsError =
-				error instanceof Error ? error.message : '切分策略数据异常，无法渲染逐层分块视图';
+			layerRowsError = error instanceof Error ? error.message : '切分策略数据异常，无法渲染逐层分块视图';
 			return [];
 		}
 	})();
 
 	$: totalGroups = Math.max(Math.ceil(layerRows.length / ROWS_PER_PAGE), 1);
 	$: currentGroup = clamp(currentGroup, 0, totalGroups - 1);
-	$: visibleRows = layerRows.slice(
-		currentGroup * ROWS_PER_PAGE,
-		(currentGroup + 1) * ROWS_PER_PAGE
-	);
+	$: visibleRows = layerRows.slice(currentGroup * ROWS_PER_PAGE, (currentGroup + 1) * ROWS_PER_PAGE);
 	$: statusLabel =
 		$collabState.phase === 'ready' || $collabState.overallProgress >= 100
 			? '准备完成'
@@ -188,21 +175,13 @@
 			class="mt-5 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-slate-500 dark:text-slate-300"
 		>
 			<div>
-				<span class="text-slate-400 dark:text-slate-500">总层数</span>
-				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{totalLayers}</span>
-			</div>
-
-			<div>
 				<span class="text-slate-400 dark:text-slate-500">边端占比</span>
-				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{edgePercent}%</span
-				>
+				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{edgePercent}%</span>
 			</div>
 
 			<div>
 				<span class="text-slate-400 dark:text-slate-500">云端占比</span>
-				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white"
-					>{cloudPercent}%</span
-				>
+				<span class="ml-2 text-lg font-semibold text-slate-900 dark:text-white">{cloudPercent}%</span>
 			</div>
 
 			<div class="flex flex-wrap items-center gap-3">
@@ -214,13 +193,6 @@
 				<div class="inline-flex items-center gap-2">
 					<span class="h-3 w-3 rounded-full bg-[#FFB629]"></span>
 					<span>云端颜色</span>
-				</div>
-
-				<div class="inline-flex items-center gap-2">
-					<span
-						class="h-3 w-6 rounded-full bg-[linear-gradient(90deg,#45B4FF_0%,#45B4FF_48%,#FFB629_52%,#FFB629_100%)]"
-					></span>
-					<span>FFN 协同色</span>
 				</div>
 			</div>
 		</div>
@@ -234,60 +206,24 @@
 				<div class="text-base font-semibold">切分策略数据异常</div>
 				<div class="mt-1">{layerRowsError}</div>
 				<div class="mt-2 text-red-600/80 dark:text-red-300/80">
-					请确认 GET /api/v1/schedule/tasks/&#123;task_id&#125;/strategy 已返回
-					decision.layer_partitions。
+					请确认 GET /api/v1/schedule/tasks/&#123;task_id&#125;/strategy 已返回 decision.layer_partitions。
 				</div>
 			</div>
 		</div>
 	{:else}
-		<div class="space-y-4 px-4 py-5 md:px-6">
+		<div class="px-4 md:px-6">
 			{#each visibleRows as row}
-				<article
-					class="rounded-[28px] border border-slate-200/80 bg-white/80 p-4 shadow-[0_18px_45px_rgba(15,23,42,0.06)] backdrop-blur dark:border-white/8 dark:bg-white/[0.03] dark:shadow-none"
-				>
-					<div class="grid gap-5 xl:grid-cols-[210px_minmax(0,1fr)] xl:items-center">
+				<article class="border-b border-slate-200/75 py-7 last:border-b-0 dark:border-white/8">
+					<div class="grid gap-5 xl:grid-cols-[170px_minmax(0,1fr)] xl:items-start">
 						<div class="min-w-0">
 							<div
-								class="text-[26px] font-semibold tracking-tight text-slate-900 dark:text-white md:text-[36px]"
+								class="mt-2 text-[26px] font-semibold tracking-tight text-slate-900 dark:text-white md:text-[36px]"
 							>
 								{row.label}
 							</div>
 
-							<div
-								class="mt-4 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-white/8 dark:bg-white/[0.04]"
-							>
-								<div
-									class="flex items-center justify-between text-[12px] text-slate-500 dark:text-slate-400"
-								>
-									<span class="font-medium text-slate-700 dark:text-slate-200">HEAD 分布</span>
-									<span>{row.heads.length} 个</span>
-								</div>
-
-								<div
-									class="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/10"
-								>
-									<div
-										class="bg-[#45B4FF]"
-										style={`width:${row.heads.length ? (row.edgeHeads / row.heads.length) * 100 : 0}%`}
-									></div>
-									<div class="flex-1 bg-[#FFB629]"></div>
-								</div>
-
-								<div class="mt-3 grid grid-cols-2 gap-2 text-[12px]">
-									<div class="rounded-xl bg-white px-2 py-2 dark:bg-black/10">
-										<div class="text-slate-400 dark:text-slate-500">边端 HEAD</div>
-										<div class="mt-0.5 font-semibold text-slate-900 dark:text-white">
-											{row.edgeHeads}
-										</div>
-									</div>
-
-									<div class="rounded-xl bg-white px-2 py-2 dark:bg-black/10">
-										<div class="text-slate-400 dark:text-slate-500">云端 HEAD</div>
-										<div class="mt-0.5 font-semibold text-slate-900 dark:text-white">
-											{row.cloudHeads}
-										</div>
-									</div>
-								</div>
+							<div class={`mt-3 text-[16px] font-medium ${getFFNClassName(row.ffnOwner)}`}>
+								{row.ffnLabel}
 							</div>
 						</div>
 
@@ -295,16 +231,18 @@
 							<div class="overflow-x-auto pb-2">
 								<div
 									class="grid"
-									style={`gap:${HEAD_CELL_GAP}px; grid-template-columns: repeat(${CELLS_PER_ROW}, minmax(${HEAD_CELL_MIN_WIDTH}px, 1fr)); min-width:${CELLS_PER_ROW * (HEAD_CELL_MIN_WIDTH + HEAD_CELL_GAP)}px;`}
+									style={`gap:${HEAD_CELL_GAP}px; grid-template-columns: repeat(${HEADS_PER_ROW}, minmax(${HEAD_CELL_MIN_WIDTH}px, 1fr)); min-width:${HEADS_PER_ROW * (HEAD_CELL_MIN_WIDTH + HEAD_CELL_GAP)}px;`}
 								>
 									{#each row.heads as head}
 										<div
-											class={`flex flex-col items-center justify-center border px-1.5 text-center text-slate-900 dark:text-white ${getExecutionClassName(head.owner)}`}
+											class={`flex flex-col items-center justify-center border px-1.5 text-center text-slate-900 dark:text-white ${
+												head.owner === 'edge'
+													? 'border-[#6BC4FF] bg-[linear-gradient(180deg,#76CEFF_0%,#4EAFF8_100%)]'
+													: 'border-[#F2C357] bg-[linear-gradient(180deg,#FFD566_0%,#FFC443_100%)]'
+											}`}
 											style={`height:${HEAD_CELL_HEIGHT}px; border-radius:${HEAD_CELL_RADIUS}px;`}
 										>
-											<span
-												class="text-[12px] font-semibold uppercase leading-none tracking-[0.06em]"
-											>
+											<span class="text-[12px] font-semibold uppercase leading-none tracking-[0.06em]">
 												HEAD
 											</span>
 
@@ -313,18 +251,6 @@
 											</span>
 										</div>
 									{/each}
-
-									<div
-										class={`flex flex-col items-center justify-center border px-1.5 text-center text-slate-900 dark:text-white ${getExecutionClassName(row.ffnOwner)}`}
-										style={`height:${HEAD_CELL_HEIGHT}px; border-radius:${HEAD_CELL_RADIUS}px;`}
-										title={`FFN ${row.ffnLabel}`}
-									>
-										<span
-											class="text-[12px] font-semibold uppercase leading-none tracking-[0.08em]"
-										>
-											FFN
-										</span>
-									</div>
 								</div>
 							</div>
 						</div>
@@ -336,7 +262,7 @@
 		<div
 			class="flex flex-col gap-3 border-t border-slate-200/80 px-4 py-4 text-sm text-slate-500 dark:border-white/8 dark:text-slate-400 md:px-6 lg:flex-row lg:items-center lg:justify-between"
 		>
-			<div>每页展示 6 层，FFN 色块跟随每层 HEAD 序列展示。</div>
+			<div>每页展示 6 层，逐层查看接口返回的 head 分配和 FFN 落点。</div>
 
 			<div class="flex items-center gap-3 self-end lg:self-auto">
 				<button

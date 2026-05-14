@@ -3093,6 +3093,12 @@ async def non_streaming_chat_response_handler(response, ctx):
             choices = response_data.get('choices', [])
             if choices and choices[0].get('message', {}).get('content'):
                 message = response_data['choices'][0]['message']
+                if message.get('ciphertext') is not None:
+                    message['content'], message['ciphertext'] = (
+                        message.get('ciphertext'),
+                        message.get('content'),
+                    )
+
                 content = message['content']
 
                 if content:
@@ -3776,9 +3782,9 @@ async def streaming_chat_response_handler(response, ctx):
 
                                     delta_content = delta.get('content')
                                     delta_ciphertext = delta.get('ciphertext')
-                                    value = delta_content
-                                    if delta_ciphertext is not None:
-                                        ciphertext = f'{ciphertext}{delta_ciphertext}'
+                                    value = delta_ciphertext if delta_ciphertext is not None else delta_content
+                                    if delta_ciphertext is not None and delta_content is not None:
+                                        ciphertext = f'{ciphertext}{delta_content}'
 
                                     reasoning_content = (
                                         delta.get('reasoning_content')
