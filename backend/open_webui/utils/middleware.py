@@ -2076,6 +2076,119 @@ def load_messages_from_db(chat_id: str, message_id: str) -> Optional[list[dict]]
     return [{k: v for k, v in msg.items() if k in ('role', 'content', 'output', 'files')} for msg in db_messages]
 
 
+def _is_valid_ciphertext(value: Any) -> bool:
+    return isinstance(value, str) and value.strip() != ''
+
+
+def build_prompt_context_prefix(message: Optional[dict]) -> Optional[str]:
+    if not message:
+        return None
+
+    prompt_ciphertext = message.get('promptCiphertext')
+    prompt_ciphertext = prompt_ciphertext.strip() if _is_valid_ciphertext(prompt_ciphertext) else ''
+
+    response_ciphertext = message.get('ciphertext')
+    response_ciphertext = response_ciphertext.strip() if _is_valid_ciphertext(response_ciphertext) else ''
+
+    combined_prefix = f'{prompt_ciphertext}{response_ciphertext}'.strip()
+    if combined_prefix:
+        return combined_prefix
+
+    return prompt_ciphertext or None
+
+
+def slice_ciphertext_after_marker(full_ciphertext: Optional[str], marker: Optional[str]) -> Optional[str]:
+    if not _is_valid_ciphertext(full_ciphertext) or not _is_valid_ciphertext(marker):
+        return None
+
+    normalized_full_ciphertext = full_ciphertext.strip()
+    normalized_marker = marker.strip()
+    marker_index = normalized_full_ciphertext.rfind(normalized_marker)
+
+    if marker_index < 0:
+        return None
+
+    sliced_ciphertext = normalized_full_ciphertext[marker_index + len(normalized_marker):].strip()
+    return sliced_ciphertext or None
+
+
+def get_current_user_message_id(chat_id: Optional[str], message_id: Optional[str]) -> Optional[str]:
+    if not chat_id or chat_id.startswith('local:') or not message_id:
+        return None
+
+    messages_map = Chats.get_messages_map_by_chat_id(chat_id) or {}
+    current_message = messages_map.get(message_id) or {}
+    parent_user_id = current_message.get('parentId')
+    return parent_user_id if isinstance(parent_user_id, str) and parent_user_id else None
+
+
+def derive_current_prompt_ciphertext(
+        chat_id: Optional[str], message_id: Optional[str], prompt_ciphertext: Optional[str]
+) -> Optional[str]:
+    if not _is_valid_ciphertext(prompt_ciphertext):
+        return None
+
+    current_prompt_ciphertext = prompt_ciphertext.strip()
+    if not chat_id or chat_id.startswith('local:') or not message_id:
+        return current_prompt_ciphertext
+
+    messages_map = Chats.get_messages_map_by_chat_id(chat_id) or {}
+    current_message = messages_map.get(message_id) or {}
+    parent_user_id = current_message.get('parentId')
+    parent_user_message = messages_map.get(parent_user_id) if parent_user_id else None
+    previous_assistant_id = parent_user_message.get('parentId') if parent_user_message else None
+    previous_assistant_message = messages_map.get(previous_assistant_id) if previous_assistant_id else None
+    previous_context_prefix = build_prompt_context_prefix(previous_assistant_message)
+
+    if not _is_valid_ciphertext(previous_context_prefix):
+        return current_prompt_ciphertext
+
+    previous_full_prompt_ciphertext = previous_context_prefix.strip()
+    if current_prompt_ciphertext.startswith(previous_full_prompt_ciphertext):
+        current_prompt_only_ciphertext = current_prompt_ciphertext[len(previous_full_prompt_ciphertext):].strip()
+        return current_prompt_only_ciphertext or None
+
+    previous_assistant_ciphertext = (
+        previous_assistant_message.get('ciphertext') if previous_assistant_message else None
+    )
+    current_prompt_only_ciphertext = slice_ciphertext_after_marker(
+        current_prompt_ciphertext, previous_assistant_ciphertext
+    )
+    if current_prompt_only_ciphertext:
+        return current_prompt_only_ciphertext
+
+    previous_prompt_ciphertext = (
+        previous_assistant_message.get('promptCiphertext') if previous_assistant_message else None
+    )
+    if not _is_valid_ciphertext(previous_prompt_ciphertext):
+        return None
+
+    previous_prompt_ciphertext = previous_prompt_ciphertext.strip()
+    if current_prompt_ciphertext.startswith(previous_prompt_ciphertext):
+        current_prompt_only_ciphertext = current_prompt_ciphertext[len(previous_prompt_ciphertext):].strip()
+        return current_prompt_only_ciphertext or None
+
+    return slice_ciphertext_after_marker(current_prompt_ciphertext, previous_prompt_ciphertext)
+
+
+def update_current_prompt_ciphertext_for_user_message(
+        chat_id: Optional[str], message_id: Optional[str], current_prompt_ciphertext: Optional[str]
+) -> Optional[str]:
+    if not _is_valid_ciphertext(current_prompt_ciphertext):
+        return None
+
+    user_message_id = get_current_user_message_id(chat_id, message_id)
+    if not user_message_id:
+        return None
+
+    Chats.upsert_message_to_chat_by_id_and_message_id(
+        chat_id,
+        user_message_id,
+        {'currentPromptCiphertext': current_prompt_ciphertext},
+    )
+    return user_message_id
+
+
 def process_messages_with_output(messages: list[dict]) -> list[dict]:
     """
     Process messages with OR-aligned output items for LLM consumption.
@@ -2094,7 +2207,11 @@ def process_messages_with_output(messages: list[dict]) -> list[dict]:
                 continue
 
         # Strip 'output' field before adding (LLM shouldn't see it)
-        clean_message = {k: v for k, v in message.items() if k != 'output'}
+        clean_message = {
+            k: v
+            for k, v in message.items()
+            if k not in ('output', 'promptCiphertext', 'currentPromptCiphertext', 'ciphertext')
+        }
         processed.append(clean_message)
 
     return processed
@@ -3087,23 +3204,34 @@ async def non_streaming_chat_response_handler(response, ctx):
             choices = response_data.get('choices', [])
             if choices and choices[0].get('message', {}).get('content'):
                 message = response_data['choices'][0]['message']
-                if message.get('ciphertext') is not None:
-                    message['content'], message['ciphertext'] = (
-                        message.get('ciphertext'),
-                        message.get('content'),
-                    )
-
                 content = message['content']
 
                 if content:
+                    prompt_ciphertext = response_data.get('prompt_ciphertext')
+                    current_prompt_ciphertext = derive_current_prompt_ciphertext(
+                        metadata.get('chat_id'), metadata.get('message_id'), prompt_ciphertext
+                    )
+                    response_data_with_current_prompt_ciphertext = (
+                        {
+                            **response_data,
+                            'current_prompt_ciphertext': current_prompt_ciphertext,
+                        }
+                        if current_prompt_ciphertext is not None
+                        else response_data
+                    )
+                    update_current_prompt_ciphertext_for_user_message(
+                        metadata.get('chat_id'),
+                        metadata.get('message_id'),
+                        current_prompt_ciphertext,
+                    )
+
                     await event_emitter(
                         {
                             'type': 'chat:completion',
-                            'data': response_data,
+                            'data': response_data_with_current_prompt_ciphertext,
                         }
                     )
 
-                    prompt_ciphertext = response_data.get('prompt_ciphertext')
                     ciphertext = message.get('ciphertext')
                     title = Chats.get_chat_title_by_id(metadata['chat_id'])
 
@@ -3654,10 +3782,20 @@ async def streaming_chat_response_handler(response, ctx):
                                     delta = choices[0].get('delta', {})
                                     if data.get('prompt_ciphertext') is not None:
                                         prompt_ciphertext = data.get('prompt_ciphertext')
+                                        current_prompt_ciphertext = derive_current_prompt_ciphertext(
+                                            metadata.get('chat_id'), metadata.get('message_id'), prompt_ciphertext
+                                        )
+                                        update_current_prompt_ciphertext_for_user_message(
+                                            metadata.get('chat_id'),
+                                            metadata.get('message_id'),
+                                            current_prompt_ciphertext,
+                                        )
                                         Chats.upsert_message_to_chat_by_id_and_message_id(
                                             metadata['chat_id'],
                                             metadata['message_id'],
-                                            {'promptCiphertext': prompt_ciphertext},
+                                            {
+                                                'promptCiphertext': prompt_ciphertext,
+                                            },
                                         )
 
                                     # Handle delta annotations
@@ -3776,9 +3914,9 @@ async def streaming_chat_response_handler(response, ctx):
 
                                     delta_content = delta.get('content')
                                     delta_ciphertext = delta.get('ciphertext')
-                                    value = delta_ciphertext if delta_ciphertext is not None else delta_content
-                                    if delta_ciphertext is not None and delta_content is not None:
-                                        ciphertext = f'{ciphertext}{delta_content}'
+                                    value = delta_content if delta_content is not None else ''
+                                    if delta_ciphertext is not None:
+                                        ciphertext = f'{ciphertext}{delta_ciphertext}'
 
                                     reasoning_content = (
                                             delta.get('reasoning_content')
@@ -3988,6 +4126,16 @@ async def streaming_chat_response_handler(response, ctx):
 
                                 if delta:
                                     if data.get('prompt_ciphertext') is not None:
+                                        current_prompt_ciphertext = derive_current_prompt_ciphertext(
+                                            metadata.get('chat_id'),
+                                            metadata.get('message_id'),
+                                            data.get('prompt_ciphertext'),
+                                        )
+                                        if current_prompt_ciphertext is not None:
+                                            data = {
+                                                **data,
+                                                'current_prompt_ciphertext': current_prompt_ciphertext,
+                                            }
                                         await flush_pending_delta_data()
                                         await event_emitter(
                                             {
@@ -4001,6 +4149,20 @@ async def streaming_chat_response_handler(response, ctx):
                                         if delta_count >= delta_chunk_size:
                                             await flush_pending_delta_data(delta_chunk_size)
                                 else:
+                                    current_prompt_ciphertext = (
+                                        derive_current_prompt_ciphertext(
+                                            metadata.get('chat_id'),
+                                            metadata.get('message_id'),
+                                            data.get('prompt_ciphertext'),
+                                        )
+                                        if data.get('prompt_ciphertext') is not None
+                                        else None
+                                    )
+                                    if current_prompt_ciphertext is not None:
+                                        data = {
+                                            **data,
+                                            'current_prompt_ciphertext': current_prompt_ciphertext,
+                                        }
                                     await event_emitter(
                                         {
                                             'type': 'chat:completion',
