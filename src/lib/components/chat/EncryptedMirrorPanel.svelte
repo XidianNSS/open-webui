@@ -9,6 +9,7 @@
 		childrenIds?: string[];
 		role?: string;
 		content?: unknown;
+		currentPromptCiphertext?: string;
 		promptCiphertext?: string;
 		ciphertext?: string;
 		[key: string]: unknown;
@@ -57,28 +58,24 @@
 		return typeof value === 'string' && value.trim().length > 0;
 	};
 
-	const extractCurrentPromptCiphertext = (
-		fullPromptCiphertext?: string,
-		previousFullPromptCiphertext?: string
-	) => {
-		if (!isValidCiphertext(fullPromptCiphertext)) {
+	const sliceCiphertextAfterMarker = (fullCiphertext?: string, marker?: string) => {
+		if (!isValidCiphertext(fullCiphertext) || !isValidCiphertext(marker)) {
 			return undefined;
 		}
 
-		const currentFull = fullPromptCiphertext.trim();
+		const normalizedFullCiphertext = fullCiphertext.trim();
+		const normalizedMarker = marker.trim();
+		const markerIndex = normalizedFullCiphertext.lastIndexOf(normalizedMarker);
 
-		if (!isValidCiphertext(previousFullPromptCiphertext)) {
-			return currentFull;
+		if (markerIndex < 0) {
+			return undefined;
 		}
 
-		const previousFull = previousFullPromptCiphertext.trim();
+		const slicedCiphertext = normalizedFullCiphertext
+			.slice(markerIndex + normalizedMarker.length)
+			.trim();
 
-		if (currentFull.startsWith(previousFull)) {
-			const currentOnly = currentFull.slice(previousFull.length).trim();
-			return currentOnly || undefined;
-		}
-
-		return currentFull;
+		return slicedCiphertext || undefined;
 	};
 
 	const findAssistantChild = (sourceHistory: ChatHistory, userMessage: ChatMessage) => {
@@ -175,7 +172,6 @@
 		const mirrorMessages: Record<string, ChatMessage> = {};
 		let previousMirrorId: string | null = null;
 		let currentMirrorId: string | null = null;
-		let previousFullPromptCiphertext: string | undefined = undefined;
 
 		for (const [index, sourceMessage] of sourceMessages.entries()) {
 			const sourceMessageId =
@@ -183,7 +179,6 @@
 				`${sourceMessage.role ?? 'message'}-${sourceMessage.parentId ?? 'root'}-${index}`;
 
 			const mirrorMessageId = `mirror-${sourceMessageId}`;
-			const nextSourceMessage = sourceMessages[index + 1];
 
 			const mirrorMessage: ChatMessage = {
 				...structuredClone(sourceMessage),
@@ -193,20 +188,10 @@
 			};
 
 			if (mirrorMessage.role === 'user') {
-				const branchAssistant =
-					nextSourceMessage?.role === 'assistant'
-						? nextSourceMessage
-						: findAssistantChild(sourceHistory, sourceMessage);
-
-				const fullPromptCiphertext =
-					typeof branchAssistant?.promptCiphertext === 'string'
-						? branchAssistant.promptCiphertext
+				const currentPromptCiphertext =
+					typeof sourceMessage.currentPromptCiphertext === 'string'
+						? sourceMessage.currentPromptCiphertext.trim()
 						: undefined;
-
-				const currentPromptCiphertext = extractCurrentPromptCiphertext(
-					fullPromptCiphertext,
-					previousFullPromptCiphertext
-				);
 
 				/**
 				 * 关键修改：
@@ -218,10 +203,6 @@
 				}
 
 				mirrorMessage.content = currentPromptCiphertext;
-
-				if (isValidCiphertext(fullPromptCiphertext)) {
-					previousFullPromptCiphertext = fullPromptCiphertext;
-				}
 			} else if (mirrorMessage.role === 'assistant') {
 				/**
 				 * 关键修改：

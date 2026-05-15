@@ -197,9 +197,62 @@
 	// 默认收起
 	let encryptedMirrorOpen = false;
 
+	const isValidCiphertext = (value) => typeof value === 'string' && value.trim().length > 0;
+
+	const sliceCiphertextAfterMarker = (fullCiphertext, marker) => {
+		if (!isValidCiphertext(fullCiphertext) || !isValidCiphertext(marker)) {
+			return undefined;
+		}
+
+		const normalizedFullCiphertext = fullCiphertext.trim();
+		const normalizedMarker = marker.trim();
+		const markerIndex = normalizedFullCiphertext.lastIndexOf(normalizedMarker);
+
+		if (markerIndex < 0) {
+			return undefined;
+		}
+
+		const slicedCiphertext = normalizedFullCiphertext
+			.slice(markerIndex + normalizedMarker.length)
+			.trim();
+
+		return slicedCiphertext || undefined;
+	};
+
+	const sanitizeCurrentPromptCiphertext = (message, currentPromptCiphertext) => {
+		if (!isValidCiphertext(currentPromptCiphertext) || message?.parentId == null) {
+			return currentPromptCiphertext;
+		}
+
+		const parentUserMessage = history.messages?.[message.parentId];
+		const previousAssistantMessage =
+			parentUserMessage?.parentId != null ? history.messages?.[parentUserMessage.parentId] : undefined;
+
+		const sanitizedByAssistant = sliceCiphertextAfterMarker(
+			currentPromptCiphertext,
+			previousAssistantMessage?.ciphertext
+		);
+		if (isValidCiphertext(sanitizedByAssistant)) {
+			return sanitizedByAssistant;
+		}
+
+		return currentPromptCiphertext;
+	};
+
 	const appendCiphertextMetadata = (message, data) => {
 		if (data?.prompt_ciphertext !== undefined) {
 			message.promptCiphertext = data.prompt_ciphertext;
+		}
+
+		if (data?.current_prompt_ciphertext !== undefined && message?.parentId != null) {
+			const parentUserMessage = history.messages?.[message.parentId];
+			if (parentUserMessage) {
+				parentUserMessage.currentPromptCiphertext = sanitizeCurrentPromptCiphertext(
+					message,
+					data.current_prompt_ciphertext
+				);
+				history.messages[message.parentId] = parentUserMessage;
+			}
 		}
 
 		const choice = data?.choices?.[0];
@@ -1558,6 +1611,7 @@
 				info: m.info ? m.info : undefined,
 				timestamp: m.timestamp,
 				...(m.promptCiphertext ? { promptCiphertext: m.promptCiphertext } : {}),
+				...(m.currentPromptCiphertext ? { currentPromptCiphertext: m.currentPromptCiphertext } : {}),
 				...(m.ciphertext ? { ciphertext: m.ciphertext } : {}),
 				...(m.usage ? { usage: m.usage } : {}),
 				...(m.sources ? { sources: m.sources } : {})
@@ -1620,6 +1674,7 @@
 				info: m.info ? m.info : undefined,
 				timestamp: m.timestamp,
 				...(m.promptCiphertext ? { promptCiphertext: m.promptCiphertext } : {}),
+				...(m.currentPromptCiphertext ? { currentPromptCiphertext: m.currentPromptCiphertext } : {}),
 				...(m.ciphertext ? { ciphertext: m.ciphertext } : {}),
 				...(m.sources ? { sources: m.sources } : {})
 			})),
