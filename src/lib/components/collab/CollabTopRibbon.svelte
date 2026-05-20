@@ -67,6 +67,42 @@
 				? '连接中'
 				: '未连接';
 
+	$: edgeNodeProgress = clamp($collabState.edge.progress ?? 0, 0, 100);
+	$: cloudNodeProgress = clamp($collabState.cloud.progress ?? 0, 0, 100);
+	$: nodeProgress = clamp(Math.round((edgeNodeProgress + cloudNodeProgress) / 2), 0, 100);
+	$: strategyStepProgress =
+		hasStrategyPercent ||
+		$collabState.backendPhase === 'loading' ||
+		$collabState.backendStatus === 'completed'
+			? 100
+			: clamp(Math.round(nodeProgress * 2), 0, 99);
+	$: loadPhaseProgress =
+		$collabState.backendStatus === 'completed'
+			? 100
+			: $collabState.backendPhase === 'loading'
+				? clamp(Math.round((nodeProgress - 50) * 2), 0, 99)
+				: 0;
+	$: integrityStepProgress =
+		$collabState.backendStatus === 'completed'
+			? 100
+			: loadPhaseProgress >= 50
+				? 100
+				: clamp(loadPhaseProgress * 2, 0, 99);
+	$: modelLoadStepProgress =
+		$collabState.backendStatus === 'completed'
+			? 100
+			: loadPhaseProgress <= 50
+				? 0
+				: clamp((loadPhaseProgress - 50) * 2, 0, 99);
+	$: strategyStepLabel =
+		strategyStepProgress >= 100 ? '切分策略已就绪' : `切分策略加载 ${strategyStepProgress}%`;
+	$: integrityStepLabel =
+		integrityStepProgress >= 100
+			? '模型完整性验证已完成'
+			: `模型完整性验证 ${integrityStepProgress}%`;
+	$: modelLoadStepLabel =
+		modelLoadStepProgress >= 100 ? '模型加载已完成' : `模型加载 ${modelLoadStepProgress}%`;
+
 	$: motionClass = 'transition-all duration-500 ease-out';
 	$: opacityMotionClass = 'transition-opacity duration-500 ease-out';
 </script>
@@ -163,8 +199,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.edge.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{strategyStepLabel}</div>
+								<div>{integrityStepLabel}</div>
+								<div>{modelLoadStepLabel}</div>
 							</div>
 						</div>
 
@@ -206,8 +244,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.cloud.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{strategyStepLabel}</div>
+								<div>{integrityStepLabel}</div>
+								<div>{modelLoadStepLabel}</div>
 							</div>
 						</div>
 					</div>
@@ -416,8 +456,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.edge.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{strategyStepLabel}</div>
+								<div>{integrityStepLabel}</div>
+								<div>{modelLoadStepLabel}</div>
 							</div>
 						</div>
 
@@ -459,8 +501,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.cloud.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{strategyStepLabel}</div>
+								<div>{integrityStepLabel}</div>
+								<div>{modelLoadStepLabel}</div>
 							</div>
 						</div>
 					</div>
