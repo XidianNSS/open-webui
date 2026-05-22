@@ -145,6 +145,11 @@ const getRuntimeHostname = () => {
 };
 
 const resolveEdgeDeviceIp = () => {
+	const configuredEdgeIp = (import.meta.env.VITE_EDGE_DEVICE_IP ?? '').trim();
+	if (configuredEdgeIp) {
+		return configuredEdgeIp;
+	}
+
 	const runtimeHost = getRuntimeHostname();
 	if (runtimeHost && isIpv4(runtimeHost) && runtimeHost !== '127.0.0.1') {
 		return runtimeHost;
@@ -418,12 +423,20 @@ let progressTargets = {
 	edge: 0,
 	cloud: 0
 };
+let taskStatusEventSource: EventSource | null = null;
 
 const clearProgressAnimation = () => {
 	if (!isBrowser || progressAnimationTimer === null) return;
 
 	window.clearInterval(progressAnimationTimer);
 	progressAnimationTimer = null;
+};
+
+const stopTaskStatusStream = () => {
+	if (!taskStatusEventSource) return;
+
+	taskStatusEventSource.close();
+	taskStatusEventSource = null;
 };
 
 const stepProgressToward = (current: number, target: number) => {
@@ -509,8 +522,13 @@ export const stopTaskPolling = () => {
 	pollTimer = null;
 };
 
-export const resetCollabState = () => {
+const stopTaskStatusUpdates = () => {
+	stopTaskStatusStream();
 	stopTaskPolling();
+};
+
+export const resetCollabState = () => {
+	stopTaskStatusUpdates();
 	clearProgressAnimation();
 	strategyLoadedTaskIds.clear();
 	strategyLoadingTaskIds.clear();
@@ -606,7 +624,11 @@ const hasNumberValue = (value: unknown): value is number => {
 	return typeof value === 'number' && Number.isFinite(value);
 };
 
-const weightedNodeProgress = (strategyProgress: number, integrityProgress: number, runtimeLoadProgress: number) => {
+const weightedNodeProgress = (
+	strategyProgress: number,
+	integrityProgress: number,
+	runtimeLoadProgress: number
+) => {
 	return clamp(
 		Math.round(strategyProgress * 0.4 + integrityProgress * 0.3 + runtimeLoadProgress * 0.3),
 		0,
@@ -642,21 +664,13 @@ const resolveNodeStepProgress = (
 		),
 		integrityProgress: clamp(
 			integrityProgress ??
-				(task.status === 'completed'
-					? 100
-					: task.phase === 'loading'
-						? phaseProgress
-						: 0),
+				(task.status === 'completed' ? 100 : task.phase === 'loading' ? phaseProgress : 0),
 			0,
 			100
 		),
 		runtimeLoadProgress: clamp(
 			runtimeLoadProgress ??
-				(task.status === 'completed'
-					? 100
-					: task.phase === 'loading'
-						? progress
-						: 0),
+				(task.status === 'completed' ? 100 : task.phase === 'loading' ? progress : 0),
 			0,
 			100
 		)
@@ -680,7 +694,12 @@ export const applyTaskToStore = (task: BackendTask) => {
 	const edgeLoadProgress = task.edge_progress !== undefined ? rawEdgeProgress : phaseProgress;
 	const cloudLoadProgress = task.cloud_progress !== undefined ? rawCloudProgress : phaseProgress;
 	const edgeStepProgress = resolveNodeStepProgress(task, 'edge', edgeLoadProgress, phaseProgress);
-	const cloudStepProgress = resolveNodeStepProgress(task, 'cloud', cloudLoadProgress, phaseProgress);
+	const cloudStepProgress = resolveNodeStepProgress(
+		task,
+		'cloud',
+		cloudLoadProgress,
+		phaseProgress
+	);
 	const hasEdgeStepProgress = hasNodeStepProgress(task, 'edge');
 	const hasCloudStepProgress = hasNodeStepProgress(task, 'cloud');
 
@@ -742,6 +761,7 @@ export const applyTaskToStore = (task: BackendTask) => {
 		error: task.error_detail ?? null,
 		edge: {
 			...s.edge,
+			progress: edgeProgress,
 			status: buildNodeStatus(
 				task.phase,
 				task.message,
@@ -755,6 +775,7 @@ export const applyTaskToStore = (task: BackendTask) => {
 		},
 		cloud: {
 			...s.cloud,
+			progress: cloudProgress,
 			status: buildNodeStatus(
 				task.phase,
 				task.message,
@@ -782,7 +803,7 @@ export const applyTaskToStore = (task: BackendTask) => {
 					? 'connected'
 					: task.status === 'failed'
 						? 'disconnected'
-			: 'connecting'
+						: 'connecting'
 		}
 	}));
 
@@ -1147,6 +1168,18 @@ export const getTaskStatus = async (taskId: string) => {
 	return data as BackendTask;
 };
 
+const buildTaskStatusStreamUrl = (taskId: string) => {
+	const token = getOpenWebUIToken();
+	if (!token) {
+		throw new Error('OpenWebUI 尚未登录，无法订阅任务状态流');
+	}
+
+	const url = new URL(`${API_BASE}/schedule/tasks/${taskId}/stream`, window.location.origin);
+	url.searchParams.set('token', token);
+
+	return url.toString();
+};
+
 export const getTaskStrategy = async (taskId: string): Promise<TaskStrategyResponse> => {
 	if (USE_MOCK_CLOUD_API) {
 		return mockGetTaskStrategy(taskId);
@@ -1194,6 +1227,7 @@ const ensureTaskStrategyLoaded = (taskId: string) => {
 export const startTaskPolling = (taskId: string) => {
 	if (!isBrowser) return;
 
+	stopTaskStatusStream();
 	stopTaskPolling();
 
 	const poll = async () => {
@@ -1202,16 +1236,16 @@ export const startTaskPolling = (taskId: string) => {
 
 			applyTaskToStore(task);
 
+			if (task.phase === 'loading' || task.phase === 'completed') {
+				ensureTaskStrategyLoaded(task.task_id);
+			}
+
 			if (task.status === 'completed' || task.status === 'failed') {
 				stopTaskPolling();
 				return;
 			}
 
 			pollTimer = window.setTimeout(poll, TASK_POLL_INTERVAL_MS);
-
-			if (task.phase === 'loading' || task.phase === 'completed') {
-				ensureTaskStrategyLoaded(task.task_id);
-			}
 		} catch (error) {
 			const message = error instanceof Error ? error.message : '轮询失败';
 			collabState.update((s) => ({
@@ -1229,6 +1263,59 @@ export const startTaskPolling = (taskId: string) => {
 	};
 
 	void poll();
+};
+
+const startTaskStatusStream = (taskId: string) => {
+	if (!isBrowser || USE_MOCK_CLOUD_API) return false;
+
+	stopTaskStatusStream();
+
+	try {
+		taskStatusEventSource = new EventSource(buildTaskStatusStreamUrl(taskId));
+	} catch (error) {
+		console.warn('任务状态 SSE 初始化失败，回退到轮询:', error);
+		return false;
+	}
+
+	taskStatusEventSource.onopen = () => {
+		stopTaskPolling();
+	};
+
+	taskStatusEventSource.onmessage = (event) => {
+		if (!event.data) return;
+
+		try {
+			const task = JSON.parse(event.data) as BackendTask;
+			applyTaskToStore(task);
+
+			if (task.phase === 'loading' || task.phase === 'completed') {
+				ensureTaskStrategyLoaded(task.task_id);
+			}
+
+			if (task.status === 'completed' || task.status === 'failed') {
+				stopTaskStatusUpdates();
+			}
+		} catch (error) {
+			console.warn('任务状态 SSE 数据解析失败:', error);
+		}
+	};
+
+	taskStatusEventSource.onerror = () => {
+		stopTaskStatusStream();
+		startTaskPolling(taskId);
+	};
+
+	return true;
+};
+
+const hasActiveTaskStatusUpdates = () => {
+	return pollTimer !== null || taskStatusEventSource !== null;
+};
+
+const startTaskStatusUpdates = (taskId: string) => {
+	if (!startTaskStatusStream(taskId)) {
+		startTaskPolling(taskId);
+	}
 };
 
 const createTaskFromState = (state: CollabState): BackendTask | null => {
@@ -1283,10 +1370,10 @@ export const startRealCollabPreparation = async (
 	) {
 		if (
 			currentState.backendStatus !== 'completed' &&
-			pollTimer === null &&
+			!hasActiveTaskStatusUpdates() &&
 			currentState.taskId
 		) {
-			startTaskPolling(currentState.taskId);
+			startTaskStatusUpdates(currentState.taskId);
 		}
 
 		return existingTask;
@@ -1298,86 +1385,86 @@ export const startRealCollabPreparation = async (
 
 	activePreparationModelType = modelType;
 	activePreparationPromise = (async () => {
-	stopTaskPolling();
-	strategyLoadedTaskIds.clear();
-	strategyLoadingTaskIds.clear();
+		stopTaskStatusUpdates();
+		strategyLoadedTaskIds.clear();
+		strategyLoadingTaskIds.clear();
 
-	const totalLayers = Math.max(payload?.totalLayers ?? 32, 1);
-	const cutLayer = clamp(Math.round(payload?.cutLayer ?? 16), 0, totalLayers);
-	const { edgePercent, cloudPercent } = normalizeSplitPercents({
-		edgePercent: payload?.edgePercent,
-		cloudPercent: payload?.cloudPercent,
-		cutLayer,
-		totalLayers
-	});
-
-	const session = await initSession();
-	const task = await triggerScheduleTask(modelType);
-
-	collabState.update((s) => ({
-		...s,
-		enabled: true,
-		mode: 'edge_cloud',
-		ribbonExpanded: true,
-		ribbonManuallyCollapsed: false,
-		phase: 'planning',
-		overallProgress: 0,
-		token: getOpenWebUIToken(),
-		sessionId: session.session_id,
-		taskId: task.task_id,
-		backendStatus: task.status,
-		backendPhase: task.phase,
-		message: task.message ?? session.message ?? '任务已受理，开始计算切分策略',
-		error: null,
-		edge: {
-			...s.edge,
-			name: payload?.edgeModel ?? s.edge.name,
-			device: payload?.edgeDevice ?? session.edge_device?.name ?? s.edge.device,
-			progress: 0,
-			status: '等待切分策略',
-			strategyProgress: 0,
-			integrityProgress: 0,
-			runtimeLoadProgress: 0,
-			startLayer: 0,
-			endLayer: Math.max(cutLayer - 1, 0)
-		},
-		cloud: {
-			...s.cloud,
-			name: payload?.cloudModel ?? s.cloud.name,
-			device: payload?.cloudDevice ?? session.cloud_device?.name ?? s.cloud.device,
-			progress: 0,
-			status: '等待切分策略',
-			strategyProgress: 0,
-			integrityProgress: 0,
-			runtimeLoadProgress: 0,
-			startLayer: cutLayer,
-			endLayer: Math.max(totalLayers - 1, 0)
-		},
-		split: {
+		const totalLayers = Math.max(payload?.totalLayers ?? 32, 1);
+		const cutLayer = clamp(Math.round(payload?.cutLayer ?? 16), 0, totalLayers);
+		const { edgePercent, cloudPercent } = normalizeSplitPercents({
+			edgePercent: payload?.edgePercent,
+			cloudPercent: payload?.cloudPercent,
 			cutLayer,
-			strategy: payload?.strategy ?? '正在计算策略',
-			totalLayers,
-			edgePercent,
-			cloudPercent,
-			edgeRange: `L0-L${Math.max(cutLayer - 1, 0)}`,
-			cloudRange: `L${cutLayer}-L${Math.max(totalLayers - 1, 0)}`,
-			currentLayer: cutLayer,
-			edgeHeadCountTotal: undefined,
-			cloudHeadCountTotal: undefined,
-			totalHeadCount: undefined,
-			modelType,
-			layerPartitions: []
-		},
-		network: {
-			rttMs: 0,
-			bandwidthMbps: 0,
-			status: 'connecting'
-		}
-	}));
+			totalLayers
+		});
 
-	applyTaskToStore(task);
-	startTaskPolling(task.task_id);
-	return task;
+		const session = await initSession();
+		const task = await triggerScheduleTask(modelType);
+
+		collabState.update((s) => ({
+			...s,
+			enabled: true,
+			mode: 'edge_cloud',
+			ribbonExpanded: true,
+			ribbonManuallyCollapsed: false,
+			phase: 'planning',
+			overallProgress: 0,
+			token: getOpenWebUIToken(),
+			sessionId: session.session_id,
+			taskId: task.task_id,
+			backendStatus: task.status,
+			backendPhase: task.phase,
+			message: task.message ?? session.message ?? '任务已受理，开始计算切分策略',
+			error: null,
+			edge: {
+				...s.edge,
+				name: payload?.edgeModel ?? s.edge.name,
+				device: payload?.edgeDevice ?? session.edge_device?.name ?? s.edge.device,
+				progress: 0,
+				status: '等待切分策略',
+				strategyProgress: 0,
+				integrityProgress: 0,
+				runtimeLoadProgress: 0,
+				startLayer: 0,
+				endLayer: Math.max(cutLayer - 1, 0)
+			},
+			cloud: {
+				...s.cloud,
+				name: payload?.cloudModel ?? s.cloud.name,
+				device: payload?.cloudDevice ?? session.cloud_device?.name ?? s.cloud.device,
+				progress: 0,
+				status: '等待切分策略',
+				strategyProgress: 0,
+				integrityProgress: 0,
+				runtimeLoadProgress: 0,
+				startLayer: cutLayer,
+				endLayer: Math.max(totalLayers - 1, 0)
+			},
+			split: {
+				cutLayer,
+				strategy: payload?.strategy ?? '正在计算策略',
+				totalLayers,
+				edgePercent,
+				cloudPercent,
+				edgeRange: `L0-L${Math.max(cutLayer - 1, 0)}`,
+				cloudRange: `L${cutLayer}-L${Math.max(totalLayers - 1, 0)}`,
+				currentLayer: cutLayer,
+				edgeHeadCountTotal: undefined,
+				cloudHeadCountTotal: undefined,
+				totalHeadCount: undefined,
+				modelType,
+				layerPartitions: []
+			},
+			network: {
+				rttMs: 0,
+				bandwidthMbps: 0,
+				status: 'connecting'
+			}
+		}));
+
+		applyTaskToStore(task);
+		startTaskStatusUpdates(task.task_id);
+		return task;
 	})();
 
 	try {
