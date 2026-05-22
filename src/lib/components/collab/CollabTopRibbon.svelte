@@ -9,6 +9,11 @@
 		return Math.min(Math.max(value, min), max);
 	};
 
+	const formatStepLabel = (value: number, loadingLabel: string, readyLabel: string) => {
+		const safeValue = clamp(Math.round(value ?? 0), 0, 100);
+		return safeValue >= 100 ? readyLabel : `${loadingLabel} ${safeValue}%`;
+	};
+
 	let skipEntranceAnimation = false;
 
 	if (typeof window !== 'undefined') {
@@ -58,6 +63,36 @@
 
 	$: edgeDeviceLabel = $collabState.edge.device || $collabState.edge.name || 'Edge-A';
 	$: cloudDeviceLabel = $collabState.cloud.device || $collabState.cloud.name || 'Cloud-B';
+	$: edgeStrategyLabel = formatStepLabel(
+		$collabState.edge.strategyProgress,
+		'切分策略加载',
+		'切分策略已就绪'
+	);
+	$: edgeIntegrityLabel = formatStepLabel(
+		$collabState.edge.integrityProgress,
+		'模型完整性检验',
+		'模型完整性检验已完成'
+	);
+	$: edgeRuntimeLabel = formatStepLabel(
+		$collabState.edge.runtimeLoadProgress,
+		'模型加载',
+		'模型加载已完成'
+	);
+	$: cloudStrategyLabel = formatStepLabel(
+		$collabState.cloud.strategyProgress,
+		'切分策略加载',
+		'切分策略已就绪'
+	);
+	$: cloudIntegrityLabel = formatStepLabel(
+		$collabState.cloud.integrityProgress,
+		'模型完整性检验',
+		'模型完整性检验已完成'
+	);
+	$: cloudRuntimeLabel = formatStepLabel(
+		$collabState.cloud.runtimeLoadProgress,
+		'模型加载',
+		'模型加载已完成'
+	);
 
 	$: overallStatusLabel = overallProgress >= 100 ? '已就绪' : '准备中';
 	$: networkStatusLabel =
@@ -163,8 +198,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.edge.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{edgeStrategyLabel}</div>
+								<div>{edgeIntegrityLabel}</div>
+								<div>{edgeRuntimeLabel}</div>
 							</div>
 						</div>
 
@@ -206,8 +243,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.cloud.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{cloudStrategyLabel}</div>
+								<div>{cloudIntegrityLabel}</div>
+								<div>{cloudRuntimeLabel}</div>
 							</div>
 						</div>
 					</div>
@@ -416,8 +455,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.edge.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{edgeStrategyLabel}</div>
+								<div>{edgeIntegrityLabel}</div>
+								<div>{edgeRuntimeLabel}</div>
 							</div>
 						</div>
 
@@ -459,8 +500,10 @@
 								></div>
 							</div>
 
-							<div class="mt-3 text-[12px] text-[#475467] dark:text-gray-300">
-								状态： {$collabState.cloud.status}
+							<div class="mt-3 space-y-1 text-[12px] text-[#475467] dark:text-gray-300">
+								<div>{cloudStrategyLabel}</div>
+								<div>{cloudIntegrityLabel}</div>
+								<div>{cloudRuntimeLabel}</div>
 							</div>
 						</div>
 					</div>
