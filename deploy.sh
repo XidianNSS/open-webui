@@ -22,7 +22,20 @@ load_env_file() {
     fi
 }
 
+use_project_node() {
+    if [ -s "$HOME/.nvm/nvm.sh" ]; then
+        # shellcheck disable=SC1090
+        source "$HOME/.nvm/nvm.sh"
+        if [ -f "$PROJECT_DIR/.nvmrc" ]; then
+            nvm use --silent "$(cat "$PROJECT_DIR/.nvmrc")" >/dev/null
+        elif nvm version 22 >/dev/null 2>&1; then
+            nvm use --silent 22 >/dev/null
+        fi
+    fi
+}
+
 load_env_file
+use_project_node
 
 SCREEN_NAME="${SCREEN_NAME:-open-webui}"
 PORT="${PORT:-18080}"

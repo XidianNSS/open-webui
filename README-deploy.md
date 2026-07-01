@@ -19,6 +19,8 @@ screen --version
 - Python: 3.11 或 3.12
 - Node.js: 18.13.0 到 22.x
 
+项目根目录提供 `.nvmrc`，`deploy.sh` 会在检测 Node 前自动加载 `~/.nvm/nvm.sh` 并优先使用 `.nvmrc` 指定的 Node 22；如果服务器默认 Node 高于 22，请不要直接用默认 Node 运行前端构建。
+
 ## 二、获取代码
 
 示例：
